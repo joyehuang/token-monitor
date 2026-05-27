@@ -449,9 +449,13 @@ function startSyncCollector() {
     limitsEnabled: settings.limitsEnabled !== false,
     limitProviders: settings.limitProviders ?? defaultLimitProviders(),
     limitsRefreshMs: normalizeLimitsRefreshMs(settings.limitsRefreshMs),
-    onUpdate: (summary) => {
+    onUpdate: async (summary) => {
       if (isExternalAgentActive()) return;
-      postToHub(summary).catch((error) => console.log(`[sync-collector] post failed: ${error.message}`));
+      try {
+        await postToHub(summary);
+      } catch (error) {
+        console.log(`[sync-collector] post failed: ${error.message}`);
+      }
     },
     onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`),
     logger: (msg) => console.log(`[sync-collector] ${msg}`)
@@ -744,10 +748,16 @@ function requestAppQuit() {
   else app.exit(0);
 }
 
-async function fetchStats() {
+async function fetchStats(options = {}) {
+  const force = Boolean(options?.force);
+  const tickOptions = force ? { forceLimits: true } : {};
   if (mode === 'local') {
+    if (force && localCollectorHandle) await localCollectorHandle.tick('manual', tickOptions);
     if (localStats) return localStats;
     return aggregateDevices(localDevice ? [localDevice] : [], 0);
+  }
+  if (force && syncCollectorHandle && !isExternalAgentActive()) {
+    await syncCollectorHandle.tick('manual', tickOptions);
   }
   const { url: hubUrl, secret } = effectiveHubConfig();
   if (!hubUrl) return aggregateDevices([], 0);
@@ -1137,7 +1147,7 @@ app.whenReady().then(() => {
     updateTrayDisplay();
     return true;
   });
-  ipcMain.handle('stats:get', () => fetchStats());
+  ipcMain.handle('stats:get', (_event, options) => fetchStats(options));
   ipcMain.handle('stream:status', () => ({ connected: streamConnected, mode }));
   ipcMain.handle('hub:getInfo', () => getHubInfo());
   ipcMain.handle('hub:regenerateSecret', () => {

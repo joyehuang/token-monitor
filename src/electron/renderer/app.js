@@ -730,9 +730,9 @@ function setLiveDot(connected) {
   els.liveDot.title = liveDotTitle(state.mode, connected);
 }
 
-async function refreshStats() {
+async function refreshStats(options = {}) {
   try {
-    state.stats = await window.tokenMonitor.getStats();
+    state.stats = await window.tokenMonitor.getStats(options);
     setStatus(statusTextFor(state.mode, state.streamConnected));
     render();
     maybeUpdateBarsIcon();
@@ -973,7 +973,7 @@ async function onClientToggle() {
     .filter((cb) => cb.checked)
     .map((cb) => cb.dataset.client);
   await saveSettings({ clients: checked.join(',') });
-  await refreshStats();
+  await refreshStats({ force: true });
 }
 
 async function onLimitProviderToggle() {
@@ -985,7 +985,7 @@ async function onLimitProviderToggle() {
     state.rowSignature = '';
   }
   await saveSettings({ limitProviders: checked.join(','), limitsEnabled: checked.length > 0 });
-  await refreshStats();
+  await refreshStats({ force: true });
 }
 
 async function saveSettings(patch) {
@@ -1100,7 +1100,7 @@ els.hubSecretRegenButton?.addEventListener('click', async () => {
 });
 els.limitsRefreshInput.addEventListener('change', async () => {
   await saveSettings({ limitsRefreshMs: Number(els.limitsRefreshInput.value) });
-  await refreshStats();
+  await refreshStats({ force: true });
 });
 els.showLimitSourceInput.addEventListener('change', async () => {
   await saveSettings({ showLimitSource: els.showLimitSourceInput.checked });
@@ -1137,7 +1137,7 @@ els.checkTokscaleButton?.addEventListener('click', checkTokscaleNpm);
 els.downloadTokscaleButton?.addEventListener('click', downloadTokscaleFromNpm);
 els.resetTokscaleButton?.addEventListener('click', resetTokscaleToBundled);
 els.openTokscaleLinkButton?.addEventListener('click', () => window.tokenMonitor.openExternal?.('https://github.com/junhoyeo/tokscale'));
-els.refreshButton.addEventListener('click', refreshStats);
+els.refreshButton.addEventListener('click', () => refreshStats({ force: true }));
 els.minButton.addEventListener('click', () => window.tokenMonitor.minimize());
 els.closeButton.addEventListener('click', () => window.tokenMonitor.close());
 
@@ -1455,7 +1455,8 @@ function setupCursorAccountUI() {
 
   document.getElementById('cursorLogoutButton').addEventListener('click', async () => {
     await window.tokenMonitor.cursor.logout();
-    refreshCursorStatus();
+    await refreshCursorStatus();
+    await refreshStats({ force: true });
   });
 
   document.getElementById('cursorRefreshButton').addEventListener('click', () => {
@@ -1473,7 +1474,8 @@ function setupCursorAccountUI() {
       return;
     }
     input.value = '';
-    refreshCursorStatus();
+    await refreshCursorStatus();
+    await refreshStats({ force: true });
   });
 
   refreshCursorStatus();

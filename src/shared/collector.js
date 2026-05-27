@@ -175,7 +175,7 @@ async function collectUsageOnce(options) {
   };
   if (options.limitsEnabled !== false) {
     summary.limits = options.limitsCollector
-      ? await options.limitsCollector.snapshot()
+      ? await options.limitsCollector.snapshot(Boolean(options.forceLimits))
       : await collectLimitsOnce(options);
   }
   return summary;
@@ -220,12 +220,20 @@ function startCollector(options) {
   const limitsCollector = limitsEnabled !== false ? createLimitsCollector(options) : null;
   let tickInFlight = false;
   let tickPending = false;
+  let pendingForceLimits = false;
+  let pendingWaiters = [];
   let debounceTimer = null;
   let intervalTimer = null;
   let stopped = false;
   const watchers = [];
 
-  async function performTick(reason) {
+  function resolvePendingWaiters() {
+    const waiters = pendingWaiters;
+    pendingWaiters = [];
+    for (const resolve of waiters) resolve();
+  }
+
+  async function performTick(reason, tickOptions = {}) {
     try {
       const summary = await collectUsageOnce({
         ...options,
@@ -234,24 +242,35 @@ function startCollector(options) {
         commandTimeoutMs,
         deviceId,
         agentVersion,
-        limitsCollector
+        limitsCollector,
+        forceLimits: Boolean(tickOptions.forceLimits)
       });
       if (stopped) return;
-      onUpdate?.(summary, reason);
+      await onUpdate?.(summary, reason);
     } catch (error) {
       if (stopped) return;
       if (onError) onError(error, reason); else log(`collector tick failed (${reason}): ${error.message}`);
     }
   }
 
-  async function runTick(reason) {
-    if (tickInFlight) { tickPending = true; return; }
+  async function runTick(reason, tickOptions = {}) {
+    if (tickInFlight) {
+      tickPending = true;
+      pendingForceLimits = pendingForceLimits || Boolean(tickOptions.forceLimits);
+      return new Promise((resolve) => pendingWaiters.push(resolve));
+    }
     tickInFlight = true;
-    await performTick(reason);
-    tickInFlight = false;
-    if (tickPending && !stopped) {
-      tickPending = false;
-      setImmediate(() => runTick('coalesced'));
+    try {
+      await performTick(reason, tickOptions);
+      while (tickPending && !stopped) {
+        const forceLimits = pendingForceLimits;
+        tickPending = false;
+        pendingForceLimits = false;
+        await performTick('coalesced', { forceLimits });
+      }
+    } finally {
+      tickInFlight = false;
+      if (stopped || !tickPending) resolvePendingWaiters();
     }
   }
 
@@ -308,7 +327,7 @@ function startCollector(options) {
   setupWatchers();
   loop();
 
-  return { stop, tick: (reason = 'manual') => runTick(reason) };
+  return { stop, tick: (reason = 'manual', tickOptions = {}) => runTick(reason, tickOptions) };
 }
 
 module.exports = {

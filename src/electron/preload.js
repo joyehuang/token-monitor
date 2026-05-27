@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
   previewAppearance: (patch) => ipcRenderer.invoke('appearance:preview', patch),
-  getStats: () => ipcRenderer.invoke('stats:get'),
+  getStats: (options) => ipcRenderer.invoke('stats:get', options),
   getStreamStatus: () => ipcRenderer.invoke('stream:status'),
   getHubInfo: () => ipcRenderer.invoke('hub:getInfo'),
   regenerateHubSecret: () => ipcRenderer.invoke('hub:regenerateSecret'),
