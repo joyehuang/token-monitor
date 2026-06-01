@@ -5,6 +5,8 @@ const FLOATING_BUBBLE_HANDLE_HEIGHT = 34;
 const FLOATING_BUBBLE_MARGIN = 8;
 const FLOATING_BUBBLE_COLLAPSED_MARGIN = { x: 0, y: FLOATING_BUBBLE_MARGIN };
 const FLOATING_BUBBLE_WINDOWS_COLLAPSED_MARGIN = { x: 0, y: 0 };
+const INITIAL_RENDERER_PERIODS = new Set(['today', 'month', 'allTime']);
+const INITIAL_RENDERER_BREAKDOWNS = new Set(['tool', 'device', 'model', 'session', 'limits']);
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, Number(value)));
@@ -39,14 +41,39 @@ function floatingBubbleWindowChrome(platform = process.platform, collapsed = fal
   };
 }
 
+function normalizedInitialRendererValue(value, allowed, fallback) {
+  const raw = String(value || '').trim();
+  return allowed.has(raw) ? raw : fallback;
+}
+
+function normalizeInitialRendererViewState(value = {}, fallback = {}) {
+  const source = value || {};
+  const fallbackSource = fallback || {};
+  const fallbackPeriod = normalizedInitialRendererValue(fallbackSource.period, INITIAL_RENDERER_PERIODS, 'today');
+  const fallbackBreakdown = normalizedInitialRendererValue(fallbackSource.breakdown, INITIAL_RENDERER_BREAKDOWNS, 'tool');
+  return {
+    period: normalizedInitialRendererValue(source.period, INITIAL_RENDERER_PERIODS, fallbackPeriod),
+    breakdown: normalizedInitialRendererValue(source.breakdown, INITIAL_RENDERER_BREAKDOWNS, fallbackBreakdown)
+  };
+}
+
+function initialRendererViewStateQuery(viewState = {}) {
+  const normalized = normalizeInitialRendererViewState(viewState);
+  const query = {};
+  if (normalized.period !== 'today') query.period = normalized.period;
+  if (normalized.breakdown !== 'tool') query.breakdown = normalized.breakdown;
+  return query;
+}
+
 function floatingBubbleInitialRendererQuery(state = {}, options = false) {
-  const collapsedWindow = typeof options === 'object' ? options.collapsedWindow === true : options === true;
+  const optionObject = options && typeof options === 'object' ? options : null;
+  const collapsedWindow = optionObject ? optionObject.collapsedWindow === true : options === true;
   const side = collapsedWindow && state?.collapsed === true && ['left', 'right'].includes(state.side)
     ? state.side
     : null;
-  const query = {};
+  const query = initialRendererViewStateQuery(optionObject?.viewState);
   if (side) query.floatingBubbleSide = side;
-  if (typeof options === 'object' && options.suppressInitialNumberAnimation === true) {
+  if (optionObject?.suppressInitialNumberAnimation === true) {
     query.suppressInitialNumberAnimation = '1';
   }
   return Object.keys(query).length ? query : null;
@@ -185,5 +212,6 @@ module.exports = {
   floatingBubbleNativeGlassEnabled,
   floatingBubbleSide,
   floatingBubbleWindowChrome,
+  normalizeInitialRendererViewState,
   moveFloatingBubbleBounds
 };

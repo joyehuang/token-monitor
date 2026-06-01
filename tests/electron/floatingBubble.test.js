@@ -105,6 +105,29 @@ test('floatingBubbleInitialRendererQuery primes the first collapsed mini-window 
   );
 });
 
+test('floatingBubbleInitialRendererQuery preserves renderer view state across window rebuilds', () => {
+  assert.deepEqual(
+    floatingBubbleInitialRendererQuery(
+      { collapsed: false, side: null },
+      {
+        suppressInitialNumberAnimation: true,
+        viewState: { period: 'month', breakdown: 'limits' }
+      }
+    ),
+    { suppressInitialNumberAnimation: '1', period: 'month', breakdown: 'limits' }
+  );
+  assert.deepEqual(
+    floatingBubbleInitialRendererQuery(
+      { collapsed: true, side: 'left' },
+      {
+        collapsedWindow: true,
+        viewState: { period: 'bad', breakdown: 'bad' }
+      }
+    ),
+    { floatingBubbleSide: 'left' }
+  );
+});
+
 test('collapsedFloatingBubbleBounds keeps the current narrow mini-window shape without requiring an edge', () => {
   const bounds = { x: 120, y: 80, width: 360, height: 520 };
   assert.deepEqual(collapsedFloatingBubbleBounds(bounds, workArea), {

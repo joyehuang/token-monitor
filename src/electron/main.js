@@ -47,6 +47,7 @@ const {
   floatingBubbleNativeGlassEnabled,
   floatingBubbleSide,
   floatingBubbleWindowChrome,
+  normalizeInitialRendererViewState,
   moveFloatingBubbleBounds
 } = require('./floatingBubble');
 
@@ -78,6 +79,7 @@ const HUB_DEFAULT_PORT = 17321;
 let mainWindow = null;
 let settingsPath = null;
 let settings = null;
+let rendererViewState = normalizeInitialRendererViewState();
 
 app.setName(APP_NAME);
 if (process.platform === 'win32') app.setAppUserModelId('com.javis.tokenmonitor');
@@ -226,6 +228,14 @@ function floatingBubblePayload() {
     collapsed: floatingBubbleState.collapsed,
     side: floatingBubbleState.side
   };
+}
+
+function updateRendererViewState(patch) {
+  rendererViewState = normalizeInitialRendererViewState({
+    ...rendererViewState,
+    ...(patch || {})
+  }, rendererViewState);
+  return rendererViewState;
 }
 
 function sendFloatingBubbleState() {
@@ -1380,7 +1390,8 @@ function createWindow(boundsOverride, options = {}) {
     inactive: options.inactive === true,
     query: floatingBubbleInitialRendererQuery(floatingBubbleState, {
       collapsedWindow: collapsedFloatingBubble,
-      suppressInitialNumberAnimation: options.suppressInitialNumberAnimation === true
+      suppressInitialNumberAnimation: options.suppressInitialNumberAnimation === true,
+      viewState: rendererViewState
     })
   });
 }
@@ -1579,6 +1590,9 @@ app.whenReady().then(() => {
       mainWindow.webContents.setZoomFactor(clampZoom(patch.zoomFactor));
     }
     return true;
+  });
+  ipcMain.on('window:viewState', (_event, patch) => {
+    updateRendererViewState(patch);
   });
   ipcMain.handle('floatingBubble:expand', () => expandFloatingBubble());
   ipcMain.handle('floatingBubble:peek', () => expandFloatingBubble({ focus: false }));

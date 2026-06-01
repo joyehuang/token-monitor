@@ -86,8 +86,17 @@ const deviceAccent = '#73bdf5';
 const deviceStaleColor = '#8c97a7';
 const fallbackModelColors = ['#6ab4f0', '#cc7c5e', '#a57df0', '#49a3b0', '#f0d66a', '#f06a7b'];
 const baseBreakdownOrder = ['tool', 'device', 'model', 'session'];
+const viewPeriodValues = new Set(['today', 'month', 'allTime']);
+const viewBreakdownValues = new Set([...baseBreakdownOrder, 'limits']);
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
-const state = { period: 'today', appUpdate: null, breakdown: 'tool', settings: null, stats: null, refreshTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time' };
+const initialViewState = window.__TOKEN_MONITOR_INITIAL_VIEW_STATE__ || {};
+
+function normalizeInitialViewValue(value, allowed, fallback) {
+  const raw = String(value || '').trim();
+  return allowed.has(raw) ? raw : fallback;
+}
+
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'tool'), settings: null, stats: null, refreshTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time' };
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false };
 const els = {
   shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), cost: document.getElementById('cost'), breakdown: document.getElementById('breakdown'), limitsPanel: document.getElementById('limitsPanel'), breakdownToggle: document.getElementById('breakdownToggle'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientCheckboxes: document.getElementById('clientCheckboxes'), openConfigButton: document.getElementById('openConfigButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
@@ -887,8 +896,7 @@ let contentReadySignaled = false;
 function render() {
   if (!state.stats) return;
   if (state.breakdown === 'limits' && !limitViewAvailable()) {
-    state.breakdown = 'tool';
-    state.rowSignature = '';
+    setBreakdown('tool');
   }
   if (state.openSession && state.breakdown !== 'session') { state.openSession = null; els.sessionDetail.classList.add('hidden'); els.sessionDetail.replaceChildren(); els.sessionDetailHead.classList.add('hidden'); els.sessionDetailHead.replaceChildren(); }
   if (state.openSession) { els.sessionDetail.classList.remove('hidden'); els.sessionDetailHead.classList.remove('hidden'); } else { els.sessionDetail.classList.add('hidden'); els.sessionDetailHead.classList.add('hidden'); }
@@ -964,6 +972,33 @@ async function refreshStats(options = {}) {
   } catch (error) {
     setStatus(error.message, true);
   }
+}
+
+function publishViewState() {
+  window.tokenMonitor.setViewState?.({ period: state.period, breakdown: state.breakdown });
+}
+
+function setPeriod(period) {
+  const next = normalizeInitialViewValue(period, viewPeriodValues, state.period);
+  if (next === state.period) {
+    publishViewState();
+    return false;
+  }
+  state.period = next;
+  publishViewState();
+  return true;
+}
+
+function setBreakdown(breakdown) {
+  const next = normalizeInitialViewValue(breakdown, viewBreakdownValues, state.breakdown);
+  if (next === state.breakdown) {
+    publishViewState();
+    return false;
+  }
+  state.breakdown = next;
+  state.rowSignature = '';
+  publishViewState();
+  return true;
 }
 
 function restartTimer() {
@@ -1324,8 +1359,15 @@ async function refreshHubInfo() {
   } catch (_) { /* ignore */ }
 }
 
+function syncPeriodTabs() {
+  for (const tab of document.querySelectorAll('.tab')) {
+    tab.classList.toggle('active', tab.dataset.period === state.period);
+  }
+}
+
 function syncSettingsForm() {
   applySettingsTranslations();
+  syncPeriodTabs();
   syncHubModeUi();
   if (els.languageInput) els.languageInput.value = currentLanguage();
   if (els.currencyInput) els.currencyInput.value = currentCurrency();
@@ -1455,8 +1497,7 @@ async function onLimitProviderToggle() {
     .filter((cb) => cb.checked)
     .map((cb) => cb.dataset.provider);
   if (checked.length === 0 && state.breakdown === 'limits') {
-    state.breakdown = 'tool';
-    state.rowSignature = '';
+    setBreakdown('tool');
   }
   await saveSettings({ limitProviders: checked.join(','), limitsEnabled: checked.length > 0 });
   await refreshStats({ force: true });
@@ -1508,6 +1549,7 @@ async function init() {
     state.settings.startAtLogin = Boolean(state.appInfo.loginItemOpenAtLogin);
   }
   syncSettingsForm();
+  publishViewState();
   await refreshHubInfo();
   await refreshTokscaleStatus();
   restartTimer();
@@ -1526,9 +1568,8 @@ async function init() {
 
 for (const tab of document.querySelectorAll('.tab')) {
   tab.addEventListener('click', () => {
-    document.querySelector('.tab.active')?.classList.remove('active');
-    tab.classList.add('active');
-    state.period = tab.dataset.period;
+    setPeriod(tab.dataset.period);
+    syncPeriodTabs();
     if (state.openSession) openSessionDetail(state.openSession);
     state.currentTotal = 0;
     state.rowSignature = '';
@@ -1560,8 +1601,7 @@ els.pinButton.addEventListener('click', () => {
   saveSettings({ windowBehavior: nextWindowBehavior(currentWindowBehavior()) });
 });
 els.breakdownToggle.addEventListener('click', () => {
-  state.breakdown = nextBreakdown(state.breakdown);
-  state.rowSignature = '';
+  setBreakdown(nextBreakdown(state.breakdown));
   render();
 });
 els.settingsButton.addEventListener('click', () => {
