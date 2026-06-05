@@ -12,7 +12,8 @@ const { createHub } = require('../hub/server');
 const { normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders } = require('../shared/limitCollector');
 const {
   normalizeClientDisplayOrder,
-  normalizeHiddenClients
+  normalizeHiddenClients,
+  normalizePinnedClients
 } = require('./renderer/clientDisplayPreferences');
 const {
   checkNpmForNewer,
@@ -125,6 +126,7 @@ function defaultSettings() {
     clients: clientsCsvForSetting(process.env.TOKEN_MONITOR_CLIENTS),
     clientDisplayOrder: '',
     hiddenClients: '',
+    pinnedClients: '',
     archivedClientUsage: { version: 1, clients: {} },
     allTimeSince: process.env.TOKEN_MONITOR_ALL_TIME_SINCE || '2024-01-01',
     limitsEnabled: parseBoolean(process.env.TOKEN_MONITOR_LIMITS_ENABLED, true),
@@ -517,6 +519,9 @@ function readSettings() {
     }
     if (saved.hiddenClients !== undefined) {
       merged.hiddenClients = normalizeHiddenClients(saved.hiddenClients, DEFAULT_CLIENT_LIST);
+    }
+    if (saved.pinnedClients !== undefined) {
+      merged.pinnedClients = normalizePinnedClients(saved.pinnedClients, DEFAULT_CLIENT_LIST);
     }
     if (saved.windowBehavior === undefined && saved.alwaysOnTop !== undefined) {
       merged.windowBehavior = saved.alwaysOnTop ? 'floating' : 'normal';
@@ -1574,6 +1579,7 @@ app.whenReady().then(() => {
       limitProviderOrder: patch.limitProviderOrder !== undefined ? migrateLimitProviderOrder(patch.limitProviderOrder) : settings.limitProviderOrder,
       clientDisplayOrder: patch.clientDisplayOrder !== undefined ? migrateClientDisplayOrder(patch.clientDisplayOrder) : (settings.clientDisplayOrder || ''),
       hiddenClients: patch.hiddenClients !== undefined ? normalizeHiddenClients(patch.hiddenClients, DEFAULT_CLIENT_LIST) : normalizeHiddenClients(settings.hiddenClients, DEFAULT_CLIENT_LIST),
+      pinnedClients: patch.pinnedClients !== undefined ? normalizePinnedClients(patch.pinnedClients, DEFAULT_CLIENT_LIST) : normalizePinnedClients(settings.pinnedClients, DEFAULT_CLIENT_LIST),
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false),
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),

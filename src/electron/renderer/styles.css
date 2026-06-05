@@ -612,7 +612,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 }
 .tool-preference-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, 22px);
+  grid-template-columns: minmax(0, 1fr) repeat(4, 22px);
   align-items: center;
   column-gap: 5px;
   margin: 0 -2px;
@@ -652,7 +652,8 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   margin: 0;
   accent-color: var(--green);
 }
-.tool-visibility-button {
+.tool-visibility-button,
+.tool-pin-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -669,6 +670,11 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   border-color: rgba(183, 234, 212, 0.28);
   background: rgba(183, 234, 212, 0.06);
 }
+.tool-visibility-button:focus-visible,
+.tool-pin-button:focus-visible {
+  outline: 1px solid rgba(183, 234, 212, 0.5);
+  outline-offset: 1px;
+}
 .tool-visibility-button.is-hidden {
   border-color: transparent;
   background: transparent;
@@ -678,7 +684,21 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   border-color: var(--line-strong);
   color: var(--text);
 }
-.tool-visibility-button svg {
+.tool-pin-button {
+  color: var(--muted);
+}
+.tool-pin-button:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, var(--control-alpha));
+  color: var(--text);
+}
+.tool-pin-button.is-pinned {
+  border-color: rgba(183, 234, 212, 0.28);
+  background: rgba(183, 234, 212, 0.06);
+  color: var(--green);
+}
+.tool-visibility-button svg,
+.tool-pin-button svg {
   width: 13px;
   height: 13px;
   fill: none;

@@ -54,8 +54,16 @@ test('tool preference controls use compact header actions without icon-only lege
   assert.doesNotMatch(group, /tool-preference-legend-/);
 
   const css = readRendererFile('styles.css');
-  assert.match(cssRule(css, '.tool-preference-row'), /grid-template-columns:\s*minmax\(0,\s*1fr\) repeat\(3,\s*22px\)/);
+  assert.match(cssRule(css, '.tool-preference-row'), /grid-template-columns:\s*minmax\(0,\s*1fr\) repeat\(4,\s*22px\)/);
   assert.match(cssRule(css, '.tool-preference-actions'), /display:\s*contents/);
   assert.doesNotMatch(css, /\.tool-preference-head/);
   assert.doesNotMatch(css, /\.tool-preference-legend-/);
+});
+
+test('tool preference rows include compact per-tool pin controls', () => {
+  const body = functionBody(readRendererFile('app.js'), 'renderToolPreferences', 'renderLimitProviderCheckboxes');
+  assert.match(body, /tool-pin-button/);
+  assert.match(body, /settings\.tools\.pinClient/);
+  assert.match(body, /settings\.tools\.unpinClient/);
+  assert.match(body, /onClientPinnedToggle/);
 });

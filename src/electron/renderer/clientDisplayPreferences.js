@@ -24,7 +24,7 @@
   }
 
   function defaultClientDisplayPreferences() {
-    return { clientDisplayOrder: '', hiddenClients: '' };
+    return { clientDisplayOrder: '', hiddenClients: '', pinnedClients: '' };
   }
 
   function normalizeClientDisplayOrder(value, clients) {
@@ -46,22 +46,47 @@
     return order;
   }
 
-  function normalizeHiddenClients(value, clients) {
+  function normalizeSelectedClients(value, clients) {
     const knownSet = new Set(clientIds(clients));
     const seen = new Set();
-    const hidden = [];
+    const selected = [];
     for (const item of csvItems(value)) {
       const id = normalizeId(item);
       if (!knownSet.has(id) || seen.has(id)) continue;
       seen.add(id);
-      hidden.push(id);
+      selected.push(id);
     }
-    return hidden.join(',');
+    return selected;
   }
 
-  function orderedClients(clients, value) {
+  function normalizeHiddenClients(value, clients) {
+    return normalizeSelectedClients(value, clients).join(',');
+  }
+
+  function normalizePinnedClients(value, clients) {
+    return normalizeSelectedClients(value, clients).join(',');
+  }
+
+  function pinnedClientIds(value, clients) {
+    return normalizePinnedClients(value, clients).split(',').filter(Boolean);
+  }
+
+  function orderPinnedIds(ids, pinnedValue, clients) {
+    const pinned = pinnedClientIds(pinnedValue, clients);
+    if (pinned.length === 0) return ids;
+    const allowed = new Set(ids);
+    const pinnedSet = new Set(pinned);
+    return [
+      ...pinned.filter((id) => allowed.has(id)),
+      ...ids.filter((id) => !pinnedSet.has(id))
+    ];
+  }
+
+  function orderedClients(clients, value, pinnedValue) {
     const byId = new Map((clients || []).map((client) => [normalizeId(client?.id), client]));
-    return normalizeClientDisplayOrder(value, clients).map((id) => byId.get(id)).filter(Boolean);
+    const order = normalizeClientDisplayOrder(value, clients);
+    const ids = hasCustomDisplayOrder(value) ? order : orderPinnedIds(order, pinnedValue, clients);
+    return ids.map((id) => byId.get(id)).filter(Boolean);
   }
 
   function moveClientDisplayOrder(value, clients, clientId, direction) {
@@ -86,10 +111,43 @@
     return order.join(',');
   }
 
-  function applyClientDisplayPreferences(rows, orderValue, hiddenValue, clients) {
+  function togglePinnedClient(value, clients, clientId) {
+    const id = normalizeId(clientId);
+    const known = new Set(clientIds(clients));
+    if (!known.has(id)) return normalizePinnedClients(value, clients);
+    const pinned = pinnedClientIds(value, clients);
+    const index = pinned.indexOf(id);
+    if (index >= 0) pinned.splice(index, 1);
+    else pinned.push(id);
+    return pinned.join(',');
+  }
+
+  function movePinnedClient(value, clients, clientId, direction) {
+    const pinned = pinnedClientIds(value, clients);
+    const from = pinned.indexOf(normalizeId(clientId));
+    const offset = direction === 'up' ? -1 : direction === 'down' ? 1 : 0;
+    const to = from + offset;
+    if (from < 0 || offset === 0 || to < 0 || to >= pinned.length) return pinned.join(',');
+    const [item] = pinned.splice(from, 1);
+    pinned.splice(to, 0, item);
+    return pinned.join(',');
+  }
+
+  function reorderPinnedClient(value, clients, clientId, targetIndex) {
+    const pinned = pinnedClientIds(value, clients);
+    const from = pinned.indexOf(normalizeId(clientId));
+    if (from < 0) return pinned.join(',');
+    const to = Math.max(0, Math.min(pinned.length - 1, Number(targetIndex) || 0));
+    if (from === to) return pinned.join(',');
+    const [item] = pinned.splice(from, 1);
+    pinned.splice(to, 0, item);
+    return pinned.join(',');
+  }
+
+  function applyClientDisplayPreferences(rows, orderValue, hiddenValue, clients, pinnedValue) {
     const hidden = new Set(normalizeHiddenClients(hiddenValue, clients).split(',').filter(Boolean));
     const visible = (rows || []).filter((row) => !hidden.has(normalizeId(row?.key)));
-    if (!hasCustomDisplayOrder(orderValue)) return visible;
+    if (!hasCustomDisplayOrder(orderValue)) return applyPinnedClientDisplayPreferences(visible, pinnedValue, clients);
 
     const orderIndex = new Map(normalizeClientDisplayOrder(orderValue, clients).map((id, index) => [id, index]));
     const fallbackIndex = Number.MAX_SAFE_INTEGER;
@@ -100,11 +158,27 @@
     });
   }
 
-  function hasClientDisplayPreferences(orderValue, hiddenValue, clients) {
+  function applyPinnedClientDisplayPreferences(rows, pinnedValue, clients) {
+    const pinned = pinnedClientIds(pinnedValue, clients);
+    if (pinned.length === 0) return rows;
+    const pinnedIndex = new Map(pinned.map((id, index) => [id, index]));
+    return (rows || []).slice().sort((a, b) => {
+      const aIndex = pinnedIndex.get(normalizeId(a?.key));
+      const bIndex = pinnedIndex.get(normalizeId(b?.key));
+      const aPinned = aIndex !== undefined;
+      const bPinned = bIndex !== undefined;
+      if (aPinned && bPinned) return aIndex - bIndex;
+      if (aPinned) return -1;
+      if (bPinned) return 1;
+      return 0;
+    });
+  }
+
+  function hasClientDisplayPreferences(orderValue, hiddenValue, clients, pinnedValue) {
     const hasKnownOrder = normalizeClientDisplayOrder(orderValue, clients).some((id) => {
       return csvItems(orderValue).some((item) => normalizeId(item) === id);
     });
-    return hasKnownOrder || normalizeHiddenClients(hiddenValue, clients).length > 0;
+    return hasKnownOrder || normalizeHiddenClients(hiddenValue, clients).length > 0 || normalizePinnedClients(pinnedValue, clients).length > 0;
   }
 
   return {
@@ -113,9 +187,13 @@
     hasClientDisplayPreferences,
     hasCustomDisplayOrder,
     moveClientDisplayOrder,
+    movePinnedClient,
     normalizeClientDisplayOrder,
     normalizeHiddenClients,
+    normalizePinnedClients,
     orderedClients,
-    reorderClientDisplayOrder
+    reorderClientDisplayOrder,
+    reorderPinnedClient,
+    togglePinnedClient
   };
 });

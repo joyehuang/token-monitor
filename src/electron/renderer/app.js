@@ -565,7 +565,7 @@ function toolRowsForPeriod(period) {
   const clientRows = Object.entries(period?.clients || {}).filter(([, value]) => Number(value) > 0).map(([client, value]) => ({ key: client, name: clientLabels[client] || client, value: Number(value), cost: Number(period?.clientCosts?.[client] || 0), color: clientColors[client] || clientColors.default, stale: false }));
   if (clientRows.length > 0) {
     const usageSortedRows = clientRows.sort((a, b) => b.value - a.value);
-    return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS);
+    return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
   }
   if (Number(period?.totalTokens || 0) === 0) return [];
   return deviceRowsForPeriod();
@@ -1483,6 +1483,10 @@ function hiddenClientSet() {
   return new Set(clientDisplayPreferencesApi.normalizeHiddenClients(state.settings?.hiddenClients, KNOWN_CLIENTS).split(',').filter(Boolean));
 }
 
+function pinnedClientSet() {
+  return new Set(clientDisplayPreferencesApi.normalizePinnedClients(state.settings?.pinnedClients, KNOWN_CLIENTS).split(',').filter(Boolean));
+}
+
 function visibilityIcon(hidden) {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
@@ -1498,6 +1502,17 @@ function visibilityIcon(hidden) {
     path.setAttribute('d', d);
     svg.appendChild(path);
   }
+  return svg;
+}
+
+function pinIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', 'M14 3l7 7-3 1-4 4 .5 3-2 2-3-5-5-3 2-2 3 .5 4-4 1-3Z');
+  svg.appendChild(path);
   return svg;
 }
 
@@ -1591,12 +1606,12 @@ function onPreferencePointerMove(event) {
 function onPreferencePointerUp(event) {
   if (!preferenceDrag || preferenceDrag.pointerId !== event.pointerId) return;
   event.preventDefault();
-  const { kind } = preferenceDrag;
+  const { kind, id } = preferenceDrag;
   const order = applyPreferenceLiveOrder(kind, event.clientY) || preferenceDrag.order;
   const changed = preferenceDrag.changed;
   releasePreferencePointer(event.pointerId);
   finishPreferenceDrag();
-  if (changed) void onPreferenceOrderCommit(kind, order);
+  if (changed) void onPreferenceOrderCommit(kind, order, id);
 }
 
 function onPreferencePointerCancel(event) {
@@ -1624,10 +1639,12 @@ function renderToolPreferences() {
   if (!els.clientDisplayList) return;
   const enabled = enabledClientSet();
   const hidden = hiddenClientSet();
-  const clients = clientDisplayPreferencesApi.orderedClients(KNOWN_CLIENTS, state.settings?.clientDisplayOrder);
+  const pinned = pinnedClientSet();
+  const clients = clientDisplayPreferencesApi.orderedClients(KNOWN_CLIENTS, state.settings?.clientDisplayOrder, state.settings?.pinnedClients);
   const hasCustomOrder = clientDisplayPreferencesApi.hasCustomDisplayOrder(state.settings?.clientDisplayOrder);
+  const hasPinnedClients = pinned.size > 0;
   const hasHiddenClients = hidden.size > 0;
-  if (els.resetClientDisplayOrderButton) els.resetClientDisplayOrderButton.disabled = !hasCustomOrder;
+  if (els.resetClientDisplayOrderButton) els.resetClientDisplayOrderButton.disabled = !hasCustomOrder && !hasPinnedClients;
   if (els.showAllClientsButton) els.showAllClientsButton.disabled = !hasHiddenClients;
   els.clientDisplayList.replaceChildren();
   for (const [index, { id, label }] of clients.entries()) {
@@ -1635,7 +1652,9 @@ function renderToolPreferences() {
     row.className = 'tool-preference-row';
     row.dataset.client = id;
     const isHidden = hidden.has(id);
+    const isPinned = pinned.has(id);
     row.classList.toggle('is-hidden', isHidden);
+    row.classList.toggle('is-pinned', isPinned);
     const name = document.createElement('div');
     name.className = 'tool-preference-name';
     name.textContent = label;
@@ -1658,10 +1677,19 @@ function renderToolPreferences() {
     visibility.setAttribute('aria-pressed', String(!isHidden));
     visibility.append(visibilityIcon(isHidden));
     visibility.addEventListener('click', () => onClientVisibilityToggle(id));
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = `tool-pin-button${isPinned ? ' is-pinned' : ''}`;
+    pin.dataset.client = id;
+    pin.title = t(isPinned ? 'settings.tools.unpinClient' : 'settings.tools.pinClient', { name: label });
+    pin.setAttribute('aria-label', pin.title);
+    pin.setAttribute('aria-pressed', String(isPinned));
+    pin.append(pinIcon());
+    pin.addEventListener('click', () => onClientPinnedToggle(id));
     const handle = createPreferenceOrderHandle({ kind: 'client', id, label, count: clients.length });
     const actions = document.createElement('div');
     actions.className = 'tool-preference-actions';
-    actions.append(track, visibility, handle);
+    actions.append(track, visibility, pin, handle);
     row.append(name, actions);
     els.clientDisplayList.appendChild(row);
   }
@@ -1729,6 +1757,11 @@ async function onClientVisibilityToggle(clientId) {
   await saveSettings({ hiddenClients: Array.from(hidden).join(',') });
 }
 
+async function onClientPinnedToggle(clientId) {
+  const next = clientDisplayPreferencesApi.togglePinnedClient(state.settings?.pinnedClients, KNOWN_CLIENTS, clientId);
+  await saveSettings({ pinnedClients: next, clientDisplayOrder: '' });
+}
+
 async function onLimitProviderToggle() {
   const checked = Array.from(els.limitProviderCheckboxes.querySelectorAll('input[type=checkbox]'))
     .filter((cb) => cb.checked)
@@ -1753,15 +1786,30 @@ async function onLimitProviderReorder(providerId, targetIndex) {
 }
 
 async function onClientDisplayMove(clientId, direction) {
+  const pinned = pinnedClientSet();
+  const hasCustomOrder = clientDisplayPreferencesApi.hasCustomDisplayOrder(state.settings?.clientDisplayOrder);
+  if (!hasCustomOrder && pinned.has(clientId)) {
+    const nextPinned = clientDisplayPreferencesApi.movePinnedClient(state.settings?.pinnedClients, KNOWN_CLIENTS, clientId, direction);
+    if (nextPinned !== clientDisplayPreferencesApi.normalizePinnedClients(state.settings?.pinnedClients, KNOWN_CLIENTS)) await saveSettings({ pinnedClients: nextPinned });
+    return;
+  }
   const next = clientDisplayPreferencesApi.moveClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS, clientId, direction);
-  await saveSettings({ clientDisplayOrder: next });
+  await saveSettings({ clientDisplayOrder: next, pinnedClients: '' });
 }
 
 async function onClientDisplayReorder(clientId, targetIndex) {
+  const pinned = pinnedClientSet();
+  const hasCustomOrder = clientDisplayPreferencesApi.hasCustomDisplayOrder(state.settings?.clientDisplayOrder);
+  if (!hasCustomOrder && pinned.has(clientId)) {
+    const pinnedTargetIndex = Math.max(0, Math.min(pinned.size - 1, Number(targetIndex) || 0));
+    const nextPinned = clientDisplayPreferencesApi.reorderPinnedClient(state.settings?.pinnedClients, KNOWN_CLIENTS, clientId, pinnedTargetIndex);
+    if (nextPinned !== clientDisplayPreferencesApi.normalizePinnedClients(state.settings?.pinnedClients, KNOWN_CLIENTS)) await saveSettings({ pinnedClients: nextPinned });
+    return;
+  }
   const current = clientDisplayPreferencesApi.normalizeClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS).join(',');
   const next = clientDisplayPreferencesApi.reorderClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS, clientId, targetIndex);
   if (next === current) return;
-  await saveSettings({ clientDisplayOrder: next });
+  await saveSettings({ clientDisplayOrder: next, pinnedClients: '' });
 }
 
 async function onPreferenceReorder(kind, id, targetIndex) {
@@ -1769,11 +1817,22 @@ async function onPreferenceReorder(kind, id, targetIndex) {
   else await onLimitProviderReorder(id, targetIndex);
 }
 
-async function onPreferenceOrderCommit(kind, order) {
+async function onPreferenceOrderCommit(kind, order, id) {
   const value = (order || []).join(',');
   if (kind === 'client') {
+    const pinned = clientDisplayPreferencesApi.normalizePinnedClients(state.settings?.pinnedClients, KNOWN_CLIENTS).split(',').filter(Boolean);
+    const hasCustomOrder = clientDisplayPreferencesApi.hasCustomDisplayOrder(state.settings?.clientDisplayOrder);
+    if (!hasCustomOrder && pinned.includes(id)) {
+      const pinnedSet = new Set(pinned);
+      const nextPinned = (order || []).slice(0, pinned.length);
+      if (nextPinned.length === pinned.length && nextPinned.every((clientId) => pinnedSet.has(clientId))) {
+        const pinnedValue = nextPinned.join(',');
+        if (pinnedValue !== pinned.join(',')) await saveSettings({ pinnedClients: pinnedValue });
+        return;
+      }
+    }
     const current = clientDisplayPreferencesApi.normalizeClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS).join(',');
-    if (value !== current) await saveSettings({ clientDisplayOrder: value });
+    if (value !== current || pinned.length > 0) await saveSettings({ clientDisplayOrder: value, pinnedClients: '' });
     return;
   }
   const current = limitProviderOrderApi.normalizeLimitProviderOrder(state.settings?.limitProviderOrder, LIMIT_PROVIDERS).join(',');
@@ -1796,7 +1855,7 @@ function onPreferenceOrderKeydown(event, kind, id) {
 }
 
 async function resetClientDisplayOrder() {
-  await saveSettings({ clientDisplayOrder: '' });
+  await saveSettings({ clientDisplayOrder: '', pinnedClients: '' });
 }
 
 async function showAllClients() {
