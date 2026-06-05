@@ -23,6 +23,7 @@ var translations = {
     "hero.title": "AI Tools usage at a glance",
     "hero.lede": "A local-first desktop widget for real-time token, cost, limit, and session monitoring across AI Tools.",
     "hero.actions": "Primary actions",
+    "hero.platforms": "Supported platforms",
     "cta.download": "Download latest release",
     "cta.github": "View on GitHub",
 
@@ -32,9 +33,9 @@ var translations = {
     "feature.live.title": "Live token tracking & cost",
     "feature.live.body": "Watch Claude Code, Codex, Hermes, OpenCode, OpenClaw, Cursor, and Antigravity update within seconds of each turn, with cost alongside every count.",
     "feature.limits.title": "AI Tool Limits before you hit the wall",
-    "feature.limits.body": "See Claude Code, Codex, Cursor, and Antigravity session, weekly, billing, and credits windows, so a limit never surprises you mid-task.",
+    "feature.limits.body": "See Claude Code, Codex, Cursor, Antigravity, and OpenCode session, weekly, billing, and credits windows, so a limit never surprises you mid-task.",
     "feature.session.title": "Per-session detail on demand",
-    "feature.session.body": "Open a Claude Code or Codex session to see tokens per prompt and per reply, read on-demand from local transcripts. Never synced.",
+    "feature.session.body": "Open a Claude Code, Codex, or OpenCode session to see tokens per prompt and per reply, read on-demand from local transcripts or databases. Never synced.",
     "mock.you": "YOU",
     "mock.newest": "↕ Newest",
     "mock.session.one": "Compare model spend...",
@@ -93,7 +94,6 @@ var translations = {
     "final.win.body": "Installer build, recommended",
     "final.source": "Intel Mac, Linux, and source installs are covered in the README for advanced setups.",
 
-    "footer.made": "Built for local-first AI coding workflows.",
     "footer.api": "API docs",
     "footer.worker": "Worker docs",
     "footer.license": "License"
@@ -119,6 +119,7 @@ var translations = {
     "hero.title": "AI Tools 用量一眼看清",
     "hero.lede": "為 AI Tools 打造的桌面 widget，即時監控 token、成本、限額與 session 明細。",
     "hero.actions": "主要操作",
+    "hero.platforms": "支援平台",
     "cta.download": "下載最新版本",
     "cta.github": "查看 GitHub",
 
@@ -128,9 +129,9 @@ var translations = {
     "feature.live.title": "即時 token 追蹤與成本",
     "feature.live.body": "Claude Code、Codex、Hermes、OpenCode、OpenClaw、Cursor、Antigravity 每輪對話後數秒內更新，每個數字旁都有成本。",
     "feature.limits.title": "在撞牆前看見 AI Tool Limits",
-    "feature.limits.body": "看見 Claude Code、Codex、Cursor、Antigravity 的 session、每週、帳單與 credits 視窗，限制不再在工作中途突襲你。",
+    "feature.limits.body": "看見 Claude Code、Codex、Cursor、Antigravity、OpenCode 的 session、每週、帳單與 credits 視窗，限制不再在工作中途突襲你。",
     "feature.session.title": "需要時才看 session 明細",
-    "feature.session.body": "打開 Claude Code 或 Codex session，看每個 prompt 與 reply 的 token；從本機 transcript 即時讀取，永不同步。",
+    "feature.session.body": "打開 Claude Code、Codex 或 OpenCode session，看每個 prompt 與 reply 的 token；從本機 transcript 或資料庫即時讀取，永不同步。",
     "mock.you": "你",
     "mock.newest": "↕ 最新",
     "mock.session.one": "比較模型成本...",
@@ -189,7 +190,6 @@ var translations = {
     "final.win.body": "建議使用安裝版",
     "final.source": "Intel Mac、Linux 與原始碼啟動方式請看 README，適合進階設定。",
 
-    "footer.made": "為本地優先的 AI coding 工作流打造。",
     "footer.api": "API 文件",
     "footer.worker": "Worker 文件",
     "footer.license": "授權"
@@ -215,6 +215,7 @@ var translations = {
     "hero.title": "AI Tools 用量一眼看清",
     "hero.lede": "为 AI Tools 打造的桌面组件，实时监控 token、成本、限额与 session 明细。",
     "hero.actions": "主要操作",
+    "hero.platforms": "支持平台",
     "cta.download": "下载最新版本",
     "cta.github": "查看 GitHub",
 
@@ -224,9 +225,9 @@ var translations = {
     "feature.live.title": "实时 token 追踪与成本",
     "feature.live.body": "Claude Code、Codex、Hermes、OpenCode、OpenClaw、Cursor、Antigravity 每轮对话后数秒内更新，每个数字旁都有成本。",
     "feature.limits.title": "在撞墙前看见 AI Tool Limits",
-    "feature.limits.body": "看见 Claude Code、Codex、Cursor、Antigravity 的 session、每周、账单与 credits 窗口，限制不再在工作中途突袭你。",
+    "feature.limits.body": "看见 Claude Code、Codex、Cursor、Antigravity、OpenCode 的 session、每周、账单与 credits 窗口，限制不再在工作中途突袭你。",
     "feature.session.title": "需要时才看 session 明细",
-    "feature.session.body": "打开 Claude Code 或 Codex session，看每个 prompt 与 reply 的 token；从本机 transcript 实时读取，永不同步。",
+    "feature.session.body": "打开 Claude Code、Codex 或 OpenCode session，看每个 prompt 与 reply 的 token；从本机 transcript 或数据库实时读取，永不同步。",
     "mock.you": "你",
     "mock.newest": "↕ 最新",
     "mock.session.one": "比较模型成本...",
@@ -285,7 +286,6 @@ var translations = {
     "final.win.body": "建议使用安装版",
     "final.source": "Intel Mac、Linux 与源码启动方式请看 README，适合进阶设置。",
 
-    "footer.made": "为本地优先的 AI coding 工作流打造。",
     "footer.api": "API 文档",
     "footer.worker": "Worker 文档",
     "footer.license": "许可证"

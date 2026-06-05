@@ -8,8 +8,8 @@
   --r-sm: 10px;
   --r-md: 12px;
   --r-lg: 14px;
-  --maxw: min(980px, calc(100% - 80px));
-  --navw: min(1080px, calc(100% - 48px));
+  --maxw: min(1040px, calc(100% - 80px));
+  --navw: min(1120px, calc(100% - 48px));
   --accent-grad: linear-gradient(90deg, var(--accent-from), var(--accent-to));
   --bg-solid: #14171c;
   --stage-bg: #07080b;

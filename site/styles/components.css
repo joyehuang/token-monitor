@@ -203,6 +203,7 @@
   z-index: 3;
   transform: rotateY(-7deg) rotateX(3deg);
 }
+.app-widget-main .tm-total { font-size: 50px; }
 
 .app-widget-back {
   inset: 18px 86px 176px 2px;
@@ -561,20 +562,24 @@
 
 /* AI Tool Limits view — sits directly under the title bar (no repeated totals header) */
 .app-frame .tm-limits { margin-top: 0; }
-.tm-limit { margin-top: 17px; padding-bottom: 15px; border-bottom: 1px solid rgba(232,238,244,0.12); }
+.tm-limit { margin-top: 13px; padding-bottom: 12px; border-bottom: 1px solid rgba(232,238,244,0.12); }
 .tm-limit:first-child { margin-top: 0; }
 .tm-limit:last-child { padding-bottom: 0; border-bottom: 0; }
 .tm-limit-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .tm-limit-name { display: inline-flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 800; }
 .tm-plan { color: var(--widget-muted); font-size: 11px; font-weight: 800; }
 .tm-updated { margin-top: 4px; color: #8b94a1; font-size: 11px; }
-.tm-windows { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin-top: 12px; }
+.tm-windows { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 16px; margin-top: 9px; }
 .tm-windows.single { grid-template-columns: 1fr; }
-.tm-windows.stacked { grid-template-columns: 1fr; gap: 18px; }
+.tm-windows.stacked { grid-template-columns: 1fr; gap: 10px; }
+.app-frame .tm-windows .tm-bar { margin-top: 6px; }
 .tm-window-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 800; }
 .tm-window-top .lbl { color: var(--widget-muted); }
 .tm-window-top .pct { color: var(--widget-text); }
-.tm-reset { margin-top: 7px; color: #8b94a1; font-size: 11px; }
+.tm-reset { margin-top: 4px; color: #8b94a1; font-size: 11px; }
+.tm-balance { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12px; font-weight: 800; }
+.tm-balance .lbl { color: var(--widget-muted); }
+.tm-balance .val { color: var(--widget-text); }
 
 /* per-session detail view — sits directly under the title bar (no repeated totals header) */
 .app-frame .tm-crumb { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 0; }
@@ -775,6 +780,19 @@
   padding: 0 0 12px;
   border-radius: 0;
   border-bottom: 1px solid rgba(232,238,244,0.10);
+}
+
+/* right metrics column stacks cost over a disclosure chevron, like the real widget */
+.app-frame-session .tm-litem-end {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+.app-frame-session .tm-litem-go {
+  color: #8b94a1;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .app-frame-session .tm-litem:hover {
