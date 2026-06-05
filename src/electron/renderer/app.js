@@ -75,6 +75,8 @@ const LIMIT_PROVIDERS = [
 ];
 const DEFAULT_LIMIT_PROVIDER_ORDER = LIMIT_PROVIDERS.map((provider) => provider.id).join(',');
 const limitProviderOrderApi = window.TokenMonitorLimitProviderOrder;
+const clientDisplayPreferencesApi = window.TokenMonitorClientDisplayPreferences;
+const preferenceDragSortApi = window.TokenMonitorPreferenceDragSort;
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
 const sessionRowsApi = window.TokenMonitorSessionRows;
@@ -99,8 +101,9 @@ function normalizeInitialViewValue(value, allowed, fallback) {
 
 const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'tool'), settings: null, stats: null, refreshTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, opencodeAccount: { status: null, error: '' }, opencodeCookieExpanded: false, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time' };
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false };
+let preferenceDrag = null;
 const els = {
-  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), cost: document.getElementById('cost'), breakdown: document.getElementById('breakdown'), limitsPanel: document.getElementById('limitsPanel'), breakdownToggle: document.getElementById('breakdownToggle'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientCheckboxes: document.getElementById('clientCheckboxes'), openConfigButton: document.getElementById('openConfigButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
+  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), cost: document.getElementById('cost'), breakdown: document.getElementById('breakdown'), limitsPanel: document.getElementById('limitsPanel'), breakdownToggle: document.getElementById('breakdownToggle'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), openConfigButton: document.getElementById('openConfigButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
 };
 Object.assign(els, {
   hubModeOptions: document.getElementById('hubModeOptions'),
@@ -135,6 +138,8 @@ Object.assign(els, {
   appUpdateViewReleaseButton: document.getElementById('appUpdateViewReleaseButton'),
   appUpdateMessage: document.getElementById('appUpdateMessage'),
   titleIconInput: document.getElementById('titleIconInput'),
+  resetClientDisplayOrderButton: document.getElementById('resetClientDisplayOrderButton'),
+  showAllClientsButton: document.getElementById('showAllClientsButton'),
   sessionDetail: document.getElementById('session-detail'),
   sessionDetailHead: document.getElementById('session-detail-head')
 });
@@ -529,7 +534,10 @@ function deviceRowsForPeriod() {
 
 function toolRowsForPeriod(period) {
   const clientRows = Object.entries(period?.clients || {}).filter(([, value]) => Number(value) > 0).map(([client, value]) => ({ key: client, name: clientLabels[client] || client, value: Number(value), cost: Number(period?.clientCosts?.[client] || 0), color: clientColors[client] || clientColors.default, stale: false }));
-  if (clientRows.length > 0) return clientRows.sort((a, b) => b.value - a.value);
+  if (clientRows.length > 0) {
+    const usageSortedRows = clientRows.sort((a, b) => b.value - a.value);
+    return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS);
+  }
   if (Number(period?.totalTokens || 0) === 0) return [];
   return deviceRowsForPeriod();
 }
@@ -1424,7 +1432,7 @@ function syncSettingsForm() {
   els.glassInput.value = String(state.settings.glassOpacity ?? 68);
   els.blurInput.value = String(state.settings.glassBlur ?? 32);
   els.zoomInput.value = String(Math.round((Number(state.settings.zoomFactor) || 1) * 100));
-  renderClientCheckboxes();
+  renderToolPreferences();
   renderLimitProviderCheckboxes();
   renderOpencodeStatus();
   applyAppearanceSettings(state.settings);
@@ -1440,30 +1448,191 @@ function enabledClientSet() {
   return new Set(String(state.settings.clients || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 }
 
-function renderClientCheckboxes() {
-  if (!els.clientCheckboxes) return;
-  if (els.clientCheckboxes.childElementCount === KNOWN_CLIENTS.length) {
-    const enabled = enabledClientSet();
-    for (const cb of els.clientCheckboxes.querySelectorAll('input[type=checkbox]')) {
-      cb.checked = enabled.has(cb.dataset.client);
-    }
-    return;
+function hiddenClientSet() {
+  return new Set(clientDisplayPreferencesApi.normalizeHiddenClients(state.settings?.hiddenClients, KNOWN_CLIENTS).split(',').filter(Boolean));
+}
+
+function visibilityIcon(hidden) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const paths = [
+    'M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z',
+    'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'
+  ];
+  if (hidden) paths.push('M4 4l16 16');
+  for (const d of paths) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
   }
+  return svg;
+}
+
+function preferenceListForKind(kind) {
+  return kind === 'client' ? els.clientDisplayList : els.limitProviderCheckboxes;
+}
+
+function preferenceItemAttribute(kind) {
+  return kind === 'client' ? 'client' : 'provider';
+}
+
+function preferenceRows(kind) {
+  const list = preferenceListForKind(kind);
+  const selector = kind === 'client' ? '.tool-preference-row[data-client]' : '.limit-provider-row[data-provider]';
+  return Array.from(list?.querySelectorAll(selector) || []);
+}
+
+function preferenceOrder(kind) {
+  const attr = preferenceItemAttribute(kind);
+  return preferenceRows(kind).map((row) => row.dataset[attr]).filter(Boolean);
+}
+
+function preferenceRowRects(kind) {
+  const attr = preferenceItemAttribute(kind);
+  return preferenceRows(kind).map((row) => {
+    const rect = row.getBoundingClientRect();
+    return { id: row.dataset[attr], top: rect.top, bottom: rect.bottom };
+  });
+}
+
+function applyPreferenceOrder(kind, order) {
+  const list = preferenceListForKind(kind);
+  if (!list) return;
+  const attr = preferenceItemAttribute(kind);
+  const rowsById = new Map(preferenceRows(kind).map((row) => [row.dataset[attr], row]));
+  for (const id of order || []) {
+    const row = rowsById.get(id);
+    if (row) list.appendChild(row);
+  }
+}
+
+function finishPreferenceDrag() {
+  setPreferencePointerListeners(false);
+  document.querySelectorAll('.is-dragging').forEach((row) => row.classList.remove('is-dragging'));
+  preferenceDrag = null;
+}
+
+function applyPreferenceLiveOrder(kind, clientY) {
+  if (!preferenceDrag) return -1;
+  const currentOrder = preferenceOrder(kind);
+  const nextOrder = preferenceDragSortApi.reorderItemsFromClientY(currentOrder, preferenceRowRects(kind), preferenceDrag.id, clientY);
+  if (nextOrder.join(',') !== currentOrder.join(',')) {
+    applyPreferenceOrder(kind, nextOrder);
+    preferenceDrag.changed = true;
+  }
+  preferenceDrag.order = nextOrder;
+  return nextOrder;
+}
+
+function startPreferenceDrag(event, kind, id) {
+  if (event.currentTarget.disabled) return;
+  event.preventDefault();
+  const order = preferenceOrder(kind);
+  preferenceDrag = { kind, id, pointerId: event.pointerId, originalOrder: order, order, changed: false, handle: event.currentTarget };
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  event.currentTarget.closest('[data-client], [data-provider]')?.classList.add('is-dragging');
+  setPreferencePointerListeners(true);
+  applyPreferenceLiveOrder(kind, event.clientY);
+}
+
+function setPreferencePointerListeners(active) {
+  const method = active ? 'addEventListener' : 'removeEventListener';
+  window[method]('pointermove', onPreferencePointerMove, true);
+  window[method]('pointerup', onPreferencePointerUp, true);
+  window[method]('pointercancel', onPreferencePointerCancel, true);
+}
+
+function releasePreferencePointer(pointerId) {
+  const handle = preferenceDrag?.handle;
+  if (handle?.hasPointerCapture?.(pointerId)) {
+    handle.releasePointerCapture(pointerId);
+  }
+}
+
+function onPreferencePointerMove(event) {
+  if (!preferenceDrag || preferenceDrag.pointerId !== event.pointerId) return;
+  event.preventDefault();
+  applyPreferenceLiveOrder(preferenceDrag.kind, event.clientY);
+}
+
+function onPreferencePointerUp(event) {
+  if (!preferenceDrag || preferenceDrag.pointerId !== event.pointerId) return;
+  event.preventDefault();
+  const { kind } = preferenceDrag;
+  const order = applyPreferenceLiveOrder(kind, event.clientY) || preferenceDrag.order;
+  const changed = preferenceDrag.changed;
+  releasePreferencePointer(event.pointerId);
+  finishPreferenceDrag();
+  if (changed) void onPreferenceOrderCommit(kind, order);
+}
+
+function onPreferencePointerCancel(event) {
+  if (!preferenceDrag || preferenceDrag.pointerId !== event.pointerId) return;
+  applyPreferenceOrder(preferenceDrag.kind, preferenceDrag.originalOrder);
+  releasePreferencePointer(event.pointerId);
+  finishPreferenceDrag();
+}
+
+function createPreferenceOrderHandle({ kind, id, label, count }) {
+  const handle = document.createElement('button');
+  handle.type = 'button';
+  handle.className = 'preference-order-handle';
+  handle.dataset.preferenceOrderHandle = kind;
+  handle.title = t(kind === 'client' ? 'settings.tools.reorderClient' : 'settings.limits.reorderProvider', { name: label });
+  handle.setAttribute('aria-label', handle.title);
+  handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
+  handle.disabled = count <= 1;
+  handle.addEventListener('pointerdown', (event) => startPreferenceDrag(event, kind, id));
+  handle.addEventListener('keydown', (event) => onPreferenceOrderKeydown(event, kind, id));
+  return handle;
+}
+
+function renderToolPreferences() {
+  if (!els.clientDisplayList) return;
   const enabled = enabledClientSet();
-  els.clientCheckboxes.replaceChildren();
-  for (const { id, label } of KNOWN_CLIENTS) {
-    const wrap = document.createElement('label');
-    wrap.className = 'client-checkbox';
-    if (id === 'cursor') wrap.dataset.client = 'cursor';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.dataset.client = id;
-    cb.checked = enabled.has(id);
-    cb.addEventListener('change', onClientToggle);
-    const text = document.createElement('span');
-    text.textContent = label;
-    wrap.append(cb, text);
-    els.clientCheckboxes.appendChild(wrap);
+  const hidden = hiddenClientSet();
+  const clients = clientDisplayPreferencesApi.orderedClients(KNOWN_CLIENTS, state.settings?.clientDisplayOrder);
+  const hasCustomOrder = clientDisplayPreferencesApi.hasCustomDisplayOrder(state.settings?.clientDisplayOrder);
+  const hasHiddenClients = hidden.size > 0;
+  if (els.resetClientDisplayOrderButton) els.resetClientDisplayOrderButton.disabled = !hasCustomOrder;
+  if (els.showAllClientsButton) els.showAllClientsButton.disabled = !hasHiddenClients;
+  els.clientDisplayList.replaceChildren();
+  for (const [index, { id, label }] of clients.entries()) {
+    const row = document.createElement('div');
+    row.className = 'tool-preference-row';
+    row.dataset.client = id;
+    const isHidden = hidden.has(id);
+    row.classList.toggle('is-hidden', isHidden);
+    const name = document.createElement('div');
+    name.className = 'tool-preference-name';
+    name.textContent = label;
+    const track = document.createElement('label');
+    track.className = 'tool-preference-toggle';
+    const trackInput = document.createElement('input');
+    trackInput.type = 'checkbox';
+    trackInput.dataset.client = id;
+    trackInput.dataset.preference = 'track';
+    trackInput.checked = enabled.has(id);
+    trackInput.setAttribute('aria-label', t('settings.tools.trackClient', { name: label }));
+    trackInput.addEventListener('change', onToolTrackingToggle);
+    track.append(trackInput);
+    const visibility = document.createElement('button');
+    visibility.type = 'button';
+    visibility.className = `tool-visibility-button${isHidden ? ' is-hidden' : ''}`;
+    visibility.dataset.client = id;
+    visibility.title = t(isHidden ? 'settings.tools.showClient' : 'settings.tools.hideClient', { name: label });
+    visibility.setAttribute('aria-label', visibility.title);
+    visibility.setAttribute('aria-pressed', String(!isHidden));
+    visibility.append(visibilityIcon(isHidden));
+    visibility.addEventListener('click', () => onClientVisibilityToggle(id));
+    const handle = createPreferenceOrderHandle({ kind: 'client', id, label, count: clients.length });
+    const actions = document.createElement('div');
+    actions.className = 'tool-preference-actions';
+    actions.append(track, visibility, handle);
+    row.append(name, actions);
+    els.clientDisplayList.appendChild(row);
   }
 }
 
@@ -1486,36 +1655,30 @@ function renderLimitProviderCheckboxes() {
     const text = document.createElement('span');
     text.textContent = settingsLabel || label;
     wrap.append(cb, text);
-    const controls = document.createElement('div');
-    controls.className = 'limit-provider-order-controls';
-    const up = document.createElement('button');
-    up.type = 'button';
-    up.className = 'limit-provider-order-button';
-    up.textContent = '↑';
-    up.title = t('settings.limits.moveUp', { name: settingsLabel || label });
-    up.setAttribute('aria-label', up.title);
-    up.disabled = index === 0;
-    up.addEventListener('click', () => onLimitProviderMove(id, 'up'));
-    const down = document.createElement('button');
-    down.type = 'button';
-    down.className = 'limit-provider-order-button';
-    down.textContent = '↓';
-    down.title = t('settings.limits.moveDown', { name: settingsLabel || label });
-    down.setAttribute('aria-label', down.title);
-    down.disabled = index === providers.length - 1;
-    down.addEventListener('click', () => onLimitProviderMove(id, 'down'));
-    controls.append(up, down);
-    row.append(wrap, controls);
+    const handle = createPreferenceOrderHandle({
+      kind: 'provider',
+      id,
+      label: settingsLabel || label,
+      count: providers.length
+    });
+    row.append(wrap, handle);
     els.limitProviderCheckboxes.appendChild(row);
   }
 }
 
-async function onClientToggle() {
-  const checked = Array.from(els.clientCheckboxes.querySelectorAll('input[type=checkbox]'))
+async function onToolTrackingToggle() {
+  const checked = Array.from(els.clientDisplayList.querySelectorAll('input[data-preference="track"]'))
     .filter((cb) => cb.checked)
     .map((cb) => cb.dataset.client);
   await saveSettings({ clients: checked.join(',') });
   await refreshStats({ force: true });
+}
+
+async function onClientVisibilityToggle(clientId) {
+  const hidden = hiddenClientSet();
+  if (hidden.has(clientId)) hidden.delete(clientId);
+  else hidden.add(clientId);
+  await saveSettings({ hiddenClients: Array.from(hidden).join(',') });
 }
 
 async function onLimitProviderToggle() {
@@ -1532,6 +1695,64 @@ async function onLimitProviderToggle() {
 async function onLimitProviderMove(providerId, direction) {
   const next = limitProviderOrderApi.moveLimitProvider(state.settings?.limitProviderOrder, LIMIT_PROVIDERS, providerId, direction);
   await saveSettings({ limitProviderOrder: next });
+}
+
+async function onLimitProviderReorder(providerId, targetIndex) {
+  const current = limitProviderOrderApi.normalizeLimitProviderOrder(state.settings?.limitProviderOrder, LIMIT_PROVIDERS).join(',');
+  const next = limitProviderOrderApi.reorderLimitProvider(state.settings?.limitProviderOrder, LIMIT_PROVIDERS, providerId, targetIndex);
+  if (next === current) return;
+  await saveSettings({ limitProviderOrder: next });
+}
+
+async function onClientDisplayMove(clientId, direction) {
+  const next = clientDisplayPreferencesApi.moveClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS, clientId, direction);
+  await saveSettings({ clientDisplayOrder: next });
+}
+
+async function onClientDisplayReorder(clientId, targetIndex) {
+  const current = clientDisplayPreferencesApi.normalizeClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS).join(',');
+  const next = clientDisplayPreferencesApi.reorderClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS, clientId, targetIndex);
+  if (next === current) return;
+  await saveSettings({ clientDisplayOrder: next });
+}
+
+async function onPreferenceReorder(kind, id, targetIndex) {
+  if (kind === 'client') await onClientDisplayReorder(id, targetIndex);
+  else await onLimitProviderReorder(id, targetIndex);
+}
+
+async function onPreferenceOrderCommit(kind, order) {
+  const value = (order || []).join(',');
+  if (kind === 'client') {
+    const current = clientDisplayPreferencesApi.normalizeClientDisplayOrder(state.settings?.clientDisplayOrder, KNOWN_CLIENTS).join(',');
+    if (value !== current) await saveSettings({ clientDisplayOrder: value });
+    return;
+  }
+  const current = limitProviderOrderApi.normalizeLimitProviderOrder(state.settings?.limitProviderOrder, LIMIT_PROVIDERS).join(',');
+  if (value !== current) await saveSettings({ limitProviderOrder: value });
+}
+
+function onPreferenceOrderKeydown(event, kind, id) {
+  const moves = { ArrowUp: 'up', ArrowDown: 'down' };
+  if (moves[event.key]) {
+    event.preventDefault();
+    if (kind === 'client') void onClientDisplayMove(id, moves[event.key]);
+    else void onLimitProviderMove(id, moves[event.key]);
+    return;
+  }
+  if (event.key === 'Home' || event.key === 'End') {
+    event.preventDefault();
+    const targetIndex = event.key === 'Home' ? 0 : Number.MAX_SAFE_INTEGER;
+    void onPreferenceReorder(kind, id, targetIndex);
+  }
+}
+
+async function resetClientDisplayOrder() {
+  await saveSettings({ clientDisplayOrder: '' });
+}
+
+async function showAllClients() {
+  await saveSettings({ hiddenClients: '' });
 }
 
 async function saveSettings(patch) {
@@ -1685,6 +1906,8 @@ els.limitsRefreshInput.addEventListener('change', async () => {
 els.showLimitSourceInput.addEventListener('change', async () => {
   await saveSettings({ showLimitSource: els.showLimitSourceInput.checked });
 });
+els.resetClientDisplayOrderButton?.addEventListener('click', resetClientDisplayOrder);
+els.showAllClientsButton?.addEventListener('click', showAllClients);
 els.resetGlassButton.addEventListener('click', async () => {
   els.glassInput.value = String(defaultAppearance.glassOpacity);
   applyAppearanceFromControls();
@@ -2201,11 +2424,13 @@ async function refreshCursorStatus() {
 }
 
 function setCursorCheckboxesEnabled(enabled) {
-  document.querySelectorAll('#clientCheckboxes [data-client="cursor"]').forEach((el) => {
-    if (enabled) el.classList.remove('disabled');
-    else el.classList.add('disabled');
-    el.title = enabled ? '' : t('settings.cursor.loginRequired');
-  });
+  const row = document.querySelector('#clientDisplayList .tool-preference-row[data-client="cursor"]');
+  const input = row?.querySelector('input[data-preference="track"]');
+  row?.classList.toggle('disabled', !enabled);
+  if (input) {
+    input.disabled = !enabled;
+    input.title = enabled ? '' : t('settings.cursor.loginRequired');
+  }
 }
 
 function setupCursorAccountUI() {

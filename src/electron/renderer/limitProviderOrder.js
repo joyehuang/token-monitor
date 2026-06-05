@@ -59,5 +59,22 @@
     return order.join(',');
   }
 
-  return { moveLimitProvider, normalizeLimitProviderOrder, normalizeLimitProviderSelection, orderedLimitProviders };
+  function reorderLimitProvider(value, providers, providerId, targetIndex) {
+    const order = normalizeLimitProviderOrder(value, providers);
+    const from = order.indexOf(String(providerId || '').trim().toLowerCase());
+    if (from < 0) return order.join(',');
+    const to = Math.max(0, Math.min(order.length - 1, Number(targetIndex) || 0));
+    if (from === to) return order.join(',');
+    const [item] = order.splice(from, 1);
+    order.splice(to, 0, item);
+    return order.join(',');
+  }
+
+  return {
+    moveLimitProvider,
+    normalizeLimitProviderOrder,
+    normalizeLimitProviderSelection,
+    orderedLimitProviders,
+    reorderLimitProvider
+  };
 });

@@ -7,7 +7,8 @@ const {
   moveLimitProvider,
   normalizeLimitProviderOrder,
   normalizeLimitProviderSelection,
-  orderedLimitProviders
+  orderedLimitProviders,
+  reorderLimitProvider
 } = require('../../src/electron/renderer/limitProviderOrder');
 
 const providers = [
@@ -45,6 +46,21 @@ test('moveLimitProvider swaps a provider with its neighbor only when possible', 
   );
   assert.equal(
     moveLimitProvider('claude,codex,cursor,antigravity', providers, 'claude', 'up'),
+    'claude,codex,cursor,antigravity'
+  );
+});
+
+test('reorderLimitProvider moves a provider to a target index', () => {
+  assert.equal(
+    reorderLimitProvider('claude,codex,cursor,antigravity', providers, 'cursor', 0),
+    'cursor,claude,codex,antigravity'
+  );
+  assert.equal(
+    reorderLimitProvider('claude,codex,cursor,antigravity', providers, 'claude', 99),
+    'codex,cursor,antigravity,claude'
+  );
+  assert.equal(
+    reorderLimitProvider('claude,codex,cursor,antigravity', providers, 'unknown', 1),
     'claude,codex,cursor,antigravity'
   );
 });

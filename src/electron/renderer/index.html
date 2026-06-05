@@ -82,9 +82,15 @@
           </div>
         </div>
         <div class="settings-group">
-          <div class="settings-group-header"><span data-i18n="settings.tools.title">Tracked Tools</span></div>
-          <p class="settings-note" data-i18n="settings.tools.note">Turn off tools to stop new collection; already collected usage stays visible.</p>
-          <div id="clientCheckboxes" class="client-checkboxes"></div>
+          <div class="settings-group-header settings-tools-header">
+            <span data-i18n="settings.tools.title">Tools</span>
+            <div class="tool-header-actions">
+              <button id="resetClientDisplayOrderButton" class="tool-header-action" type="button" title="Reset order" aria-label="Reset order" data-i18n-title="settings.tools.resetOrder" data-i18n-aria-label="settings.tools.resetOrder"><span aria-hidden="true">↺</span></button>
+              <button id="showAllClientsButton" class="tool-header-action" type="button" title="Show all" aria-label="Show all" data-i18n-title="settings.tools.showAll" data-i18n-aria-label="settings.tools.showAll"><span class="tool-header-eye" aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <p class="settings-note" data-i18n="settings.tools.note">Track controls collection. Show controls the main Tools list.</p>
+          <div id="clientDisplayList" class="tool-preference-list"></div>
         </div>
         <div id="cursorAccountGroup" class="settings-group cursor-account-group">
           <button id="cursorSettingsToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="cursorSettingsDetails">
@@ -299,6 +305,8 @@
     <script src="trayBars.js"></script>
     <script src="trayProviderIcons.js"></script>
     <script src="limitProviderOrder.js"></script>
+    <script src="clientDisplayPreferences.js"></script>
+    <script src="preferenceDragSort.js"></script>
     <script src="i18n.js"></script>
     <script src="sessionRows.js"></script>
     <script src="sessionDetail.js"></script>

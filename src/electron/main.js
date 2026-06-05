@@ -11,6 +11,10 @@ const { startCollector } = require('../shared/collector');
 const { createHub } = require('../hub/server');
 const { normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders } = require('../shared/limitCollector');
 const {
+  normalizeClientDisplayOrder,
+  normalizeHiddenClients
+} = require('./renderer/clientDisplayPreferences');
+const {
   checkNpmForNewer,
   cleanupStaleStaging,
   downloadFromNpm,
@@ -76,6 +80,7 @@ const TRAY_CONTENT_VALUES = new Set(['tokens', 'cost', 'both', 'tokensAll', 'cos
 const HUB_MODE_VALUES = new Set(['local', 'client', 'host']);
 const LANGUAGE_VALUES = new Set(['auto', 'en', 'zh-TW', 'zh-CN']);
 const HUB_DEFAULT_PORT = 17321;
+const DEFAULT_CLIENT_LIST = DEFAULT_CLIENTS.split(',').map((id) => ({ id }));
 
 let mainWindow = null;
 let settingsPath = null;
@@ -118,6 +123,8 @@ function defaultSettings() {
     deviceId: process.env.TOKEN_MONITOR_DEVICE_ID || defaultDeviceId(),
     lastPostedDeviceId: '',
     clients: clientsCsvForSetting(process.env.TOKEN_MONITOR_CLIENTS),
+    clientDisplayOrder: '',
+    hiddenClients: '',
     archivedClientUsage: { version: 1, clients: {} },
     allTimeSince: process.env.TOKEN_MONITOR_ALL_TIME_SINCE || '2024-01-01',
     limitsEnabled: parseBoolean(process.env.TOKEN_MONITOR_LIMITS_ENABLED, true),
@@ -159,6 +166,13 @@ function migrateLimitProviders(value) {
 
 function migrateLimitProviderOrder(value) {
   return parseLimitProviders(value).join(',') || defaultLimitProviderOrder();
+}
+
+function migrateClientDisplayOrder(value) {
+  const known = new Set(DEFAULT_CLIENTS.split(','));
+  const raw = Array.isArray(value) ? value : String(value || '').split(',');
+  const hasKnownClient = raw.some((item) => known.has(String(item || '').trim().toLowerCase()));
+  return hasKnownClient ? normalizeClientDisplayOrder(value, DEFAULT_CLIENT_LIST).join(',') : '';
 }
 
 function normalizeTrayContent(value, fallback = 'tokens') {
@@ -497,6 +511,12 @@ function readSettings() {
     }
     if (saved.limitProviderOrder !== undefined) {
       merged.limitProviderOrder = migrateLimitProviderOrder(saved.limitProviderOrder);
+    }
+    if (saved.clientDisplayOrder !== undefined) {
+      merged.clientDisplayOrder = migrateClientDisplayOrder(saved.clientDisplayOrder);
+    }
+    if (saved.hiddenClients !== undefined) {
+      merged.hiddenClients = normalizeHiddenClients(saved.hiddenClients, DEFAULT_CLIENT_LIST);
     }
     if (saved.windowBehavior === undefined && saved.alwaysOnTop !== undefined) {
       merged.windowBehavior = saved.alwaysOnTop ? 'floating' : 'normal';
@@ -1552,6 +1572,8 @@ app.whenReady().then(() => {
       limitsEnabled: parseBoolean(patch.limitsEnabled ?? settings.limitsEnabled, true),
       limitProviders: patch.limitProviders !== undefined ? parseLimitProviders(patch.limitProviders).join(',') : settings.limitProviders,
       limitProviderOrder: patch.limitProviderOrder !== undefined ? migrateLimitProviderOrder(patch.limitProviderOrder) : settings.limitProviderOrder,
+      clientDisplayOrder: patch.clientDisplayOrder !== undefined ? migrateClientDisplayOrder(patch.clientDisplayOrder) : (settings.clientDisplayOrder || ''),
+      hiddenClients: patch.hiddenClients !== undefined ? normalizeHiddenClients(patch.hiddenClients, DEFAULT_CLIENT_LIST) : normalizeHiddenClients(settings.hiddenClients, DEFAULT_CLIENT_LIST),
       limitsRefreshMs: normalizeLimitsRefreshMs(patch.limitsRefreshMs ?? settings.limitsRefreshMs),
       showLimitSource: parseBoolean(patch.showLimitSource ?? settings.showLimitSource, false),
       zoomFactor: clampZoom(patch.zoomFactor ?? settings.zoomFactor),
