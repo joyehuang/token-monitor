@@ -15,8 +15,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2B-0078D4?style=flat-square" alt="Windows 10 或更新" />
     <img src="https://img.shields.io/badge/macOS-14%2B-0A84FF?style=flat-square&logo=apple&logoColor=white" alt="macOS 14 或更新" />
     <img src="https://img.shields.io/badge/iOS-16%2B-0A84FF?style=flat-square&logo=apple&logoColor=white" alt="iOS 16 或更新" />
-    <a href="docs/API.md"><img src="https://img.shields.io/badge/API-Docs-0B7285?style=flat-square" alt="API 文档" /></a>
     <a href="worker/README.md"><img src="https://img.shields.io/badge/Worker-Cloudflare-F38020?style=flat-square&logo=cloudflare&logoColor=white" alt="Cloudflare Worker" /></a>
+    <a href="https://discord.gg/HmdNVVvw5P"><img src="https://img.shields.io/discord/1344259784219689031?color=5865F2&label=Discord&logo=discord&logoColor=white&style=flat-square" alt="Discord"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-A855F7?style=flat-square" alt="许可证：MIT" /></a>
 </p>
 
@@ -44,9 +44,11 @@
 - **单个 session 明细**：点进 Claude Code、Codex 或 OpenCode 的 session，可看每条提问的 Token 消耗，并展开查看每次回复的 Token 拆分与用到的工具（打开时才实时读取本机 transcript 或数据库，绝不同步）
 - **成本分项**：Token 数量旁附带成本统计
 - **AI 工具用量上限检测**：支持 Claude Code、Codex、Cursor、Antigravity 与 OpenCode，涵盖 session、每周、账单与 credits 窗口
+- **工具列表自定义**：可隐藏、置顶和拖曳排序主列表中的工具，不影响实际追踪
 - **外观控制**：玻璃透明度、模糊度、完全透明窗口
 - **菜单栏（macOS）与系统托盘（Windows）弹出窗口**：图标旁可显示成本、token 数，或 Claude／Codex／Cursor／Antigravity／OpenCode 最接近用完的用量上限百分比
 - **悬浮小窗模式**：可将组件收成可拖动的紧凑小窗，支持点击或悬停预览展开，并可显示托盘同款内容
+- **可录制全局快捷键**：可从任何地方快速显示或隐藏窗口
 - **本地优先**：单设备使用完全无需服务器
 - **自托管同步后端**：小部件内 hub、Node CLI hub 或 Cloudflare Worker
 - **iOS 小部件支持**：通过 Worker hub 搭配 Widgy、Scriptable
@@ -166,11 +168,12 @@ npm run pack       # 未打包的 app 目录（无安装包），方便本机快
 点击小部件标题栏上的 `⚙` 按钮打开设置面板。
 
 - **多设备同步**——三种模式：**Local only**（仅本机，无 hub）、**Connect to a hub**（贴入其他机器的 Hub URL + secret）、**Host hub on this device**（在本机开 hub 供其他设备连入；面板会列出可用的局域网 / Tailscale / ZeroTier 地址）。
-- **追踪的工具**——各支持 AI 工具的复选框。切换立即生效，并会用新的客户端清单重启采集器。
+- **追踪的工具**——选择要采集的 AI 工具，也可以独立隐藏、置顶或拖曳排序主列表中的工具。
 - **AI 工具用量上限**——选择 Claude Code、Codex、Cursor、Antigravity 与 OpenCode 的用量上限检测与刷新频率。
 - **窗口行为**——选择浮在其他 app 上方、普通窗口，或固定在桌面。
 - **托盘模式**——切换为 macOS 菜单栏或 Windows 系统托盘的弹出窗口，并选择图标旁显示的内容：成本、今日 token 数、累计 token 数、成本＋token、最接近用完的 Claude／Codex／Cursor／Antigravity／OpenCode 用量上限百分比，或仅显示图标。
 - **悬浮小窗**——将组件收成可拖动的小窗，可用点击或悬停预览展开，并可选择显示图标、token、费用或 AI 工具额度条。
+- **快捷键**——录制全局快捷键，用来显示或隐藏窗口。
 - **外观**——系统玻璃、实时指示点、工具图标、Discord Rich Presence、玻璃透明度、玻璃模糊度。
 - **高级**——打开底层 `settings.json` 调整较少用的选项，例如 `allTimeSince`。
 
@@ -186,7 +189,7 @@ TOKEN_MONITOR_SECRET=                # 共用 secret，必须与 hub 一致
 TOKEN_MONITOR_DEVICE_ID=             # 可选——默认为主机名
 TOKEN_MONITOR_CLIENTS=               # 可选——默认为所有支持的工具；设为空表示不追踪
 TOKEN_MONITOR_LIMITS_ENABLED=        # 可选——默认启用；设为 0 可跳过 CLI 探测
-TOKEN_MONITOR_LIMIT_PROVIDERS=       # 可选——默认为所有支持的提供方（claude、codex、cursor、antigravity）
+TOKEN_MONITOR_LIMIT_PROVIDERS=       # 可选——默认为所有支持的提供方（claude、codex、cursor、antigravity、opencode）
 ```
 
 小部件会把同样的环境变量读作首次启动的默认值，之后改由 GUI 设置接管。

@@ -15,8 +15,8 @@
     <img src="https://img.shields.io/badge/Windows-10%2B-0078D4?style=flat-square" alt="Windows 10 or later" />
     <img src="https://img.shields.io/badge/macOS-14%2B-0A84FF?style=flat-square&logo=apple&logoColor=white" alt="macOS 14 or later" />
     <img src="https://img.shields.io/badge/iOS-16%2B-0A84FF?style=flat-square&logo=apple&logoColor=white" alt="iOS 16 or later" />
-    <a href="docs/API.md"><img src="https://img.shields.io/badge/API-Docs-0B7285?style=flat-square" alt="API Docs" /></a>
     <a href="worker/README.md"><img src="https://img.shields.io/badge/Worker-Cloudflare-F38020?style=flat-square&logo=cloudflare&logoColor=white" alt="Cloudflare Worker" /></a>
+    <a href="https://discord.gg/HmdNVVvw5P"><img src="https://img.shields.io/discord/1344259784219689031?color=5865F2&label=Discord&logo=discord&logoColor=white&style=flat-square" alt="Discord"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-A855F7?style=flat-square" alt="License: MIT" /></a>
 </p>
 
@@ -44,9 +44,11 @@ Most usage monitors are useful on the machine they run on. Token Monitor is buil
 - **Per-session detail** — open a Claude Code, Codex, or OpenCode session to see tokens per prompt, expandable to each reply's exact token split and tools used (read on-demand from local transcripts or databases, never synced)
 - **Cost breakdown** alongside token counts
 - **AI Tool Limits detection** for Claude Code, Codex, Cursor, Antigravity, and OpenCode with session, weekly, billing, and credits windows
+- **Customizable tool list** to hide, pin, and reorder tools in the main dashboard without changing what gets tracked
 - **Appearance controls** for glass opacity, blur, and transparent window mode
 - **Menu bar (macOS) and system tray (Windows) popover** with live cost, tokens, or closest Claude/Codex/Cursor/Antigravity/OpenCode limit % next to the icon
 - **Floating Bubble mode** that collapses the widget into a draggable mini-window with click or hover preview and tray-style content
+- **Recordable global shortcut** to show or hide the window from anywhere
 - **Local-first:** no servers needed for single-device use
 - **Self-hosted sync backend** (in-widget hub, Node CLI hub, or Cloudflare Worker)
 - **iOS widget support** via Widgy and Scriptable through the Worker hub
@@ -166,11 +168,12 @@ The widget chooses local vs sync mode based on Settings → Multi-device Sync. T
 Click the `⚙` button in the widget header to open the Settings panel.
 
 - **Multi-device Sync** — three modes: **Local only** (this device, no hub), **Connect to a hub** (paste another machine's Hub URL + secret), or **Host hub on this device** (open a hub here so other devices can connect; LAN/Tailscale/ZeroTier addresses are listed for you).
-- **Tracked Tools** — checkboxes for each supported AI tool. Toggles take effect immediately and restart the collector with the new client list.
+- **Tracked Tools** — choose which AI tools are collected, and independently hide, pin, or reorder tools in the main list.
 - **AI Tool Limits** — choose Claude Code, Codex, Cursor, Antigravity, and OpenCode limit detection and refresh frequency.
 - **Window behavior** — choose floating above apps, a normal window, or desktop pinned mode.
 - **Tray Mode** — switch to a menu bar (macOS) or system tray (Windows) popover and choose what shows next to the icon: cost, today's tokens, total tokens, cost + tokens, the closest Claude/Codex/Cursor/Antigravity/OpenCode limit % left, or icon-only.
 - **Floating Bubble** — collapse the widget into a draggable mini-window, reopen it by click or hover preview, and choose bubble content from icon, tokens, cost, or AI Tool Limit bars.
+- **Shortcut** — record a global shortcut to show or hide the window.
 - **Appearance** — system glass, live dot, tool icons, Discord Rich Presence, glass opacity, and glass blur.
 - **Advanced** — opens the underlying `settings.json` for less-common options like `allTimeSince`.
 
@@ -186,7 +189,7 @@ TOKEN_MONITOR_SECRET=                # shared secret, must match the hub
 TOKEN_MONITOR_DEVICE_ID=             # optional — defaults to hostname
 TOKEN_MONITOR_CLIENTS=               # optional — defaults to all supported tools; set empty to disable tracking
 TOKEN_MONITOR_LIMITS_ENABLED=        # optional — defaults to enabled; set to 0 to skip CLI probing
-TOKEN_MONITOR_LIMIT_PROVIDERS=       # optional — defaults to all supported (claude, codex, cursor, antigravity)
+TOKEN_MONITOR_LIMIT_PROVIDERS=       # optional — defaults to all supported (claude, codex, cursor, antigravity, opencode)
 ```
 
 The widget reads the same env vars as first-run defaults, then takes over with its own GUI-managed settings.
