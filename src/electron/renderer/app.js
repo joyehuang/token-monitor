@@ -131,6 +131,7 @@ const SERVICE_STATUS_PLACEHOLDERS = [
 ];
 const initialFloatingBubble = window.__TOKEN_MONITOR_INITIAL_FLOATING_BUBBLE__ || { collapsed: false, side: null };
 const initialViewState = window.__TOKEN_MONITOR_INITIAL_VIEW_STATE__ || {};
+let initialBreakdownPreferenceApplied = typeof initialViewState.breakdown === 'string';
 
 function normalizeInitialViewValue(value, allowed, fallback) {
   const raw = String(value || '').trim();
@@ -646,8 +647,14 @@ function visibleBreakdownOrder() {
 }
 
 function ensureBreakdownVisible() {
-  const order = visibleBreakdownOrder();
-  if (!order.includes(state.breakdown)) setBreakdown(order[0] || 'tool');
+  const next = viewDisplayPreferencesApi.preferredViewId({
+    views: VIEW_DISPLAY_OPTIONS,
+    orderValue: state.settings?.viewDisplayOrder,
+    hiddenValue: state.settings?.hiddenViews,
+    availableIds: availableBreakdownIds(),
+    currentId: state.breakdown
+  });
+  if (next !== state.breakdown) setBreakdown(next);
 }
 
 function limitStatusLabel(status, stale) {
@@ -1677,8 +1684,23 @@ function syncPeriodTabs() {
   }
 }
 
+function applyInitialBreakdownPreference() {
+  if (initialBreakdownPreferenceApplied || !state.settings) return;
+  initialBreakdownPreferenceApplied = true;
+  const next = viewDisplayPreferencesApi.preferredViewId({
+    views: VIEW_DISPLAY_OPTIONS,
+    orderValue: state.settings?.viewDisplayOrder,
+    hiddenValue: state.settings?.hiddenViews,
+    availableIds: availableBreakdownIds(),
+    currentId: state.breakdown,
+    preferFirst: true
+  });
+  if (next !== state.breakdown) setBreakdown(next);
+}
+
 function syncSettingsForm() {
   applySettingsTranslations();
+  applyInitialBreakdownPreference();
   syncPeriodTabs();
   syncHubModeUi();
   if (els.languageInput) els.languageInput.value = currentLanguage();

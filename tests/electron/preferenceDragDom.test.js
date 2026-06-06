@@ -85,3 +85,14 @@ test('view preferences use compact visibility and order controls', () => {
   assert.match(body, /settings\.views\.showView/);
   assert.match(body, /createPreferenceOrderHandle\(\{ kind: 'view'/);
 });
+
+test('renderer applies the first visible view on cold startup only', () => {
+  const app = readRendererFile('app.js');
+  const body = functionBody(app, 'applyInitialBreakdownPreference', 'syncSettingsForm');
+  assert.match(body, /initialBreakdownPreferenceApplied/);
+  assert.match(body, /preferFirst:\s*true/);
+  assert.match(body, /preferredViewId/);
+
+  const syncBody = functionBody(app, 'syncSettingsForm', 'enabledClientSet');
+  assert.match(syncBody, /applyInitialBreakdownPreference\(\)/);
+});

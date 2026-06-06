@@ -96,6 +96,13 @@
     return ordered.filter((id) => available.has(id)).slice(0, 1);
   }
 
+  function preferredViewId({ views, orderValue, hiddenValue, availableIds, currentId, preferFirst = false, fallback = 'tool' } = {}) {
+    const order = visibleViewOrder({ views, orderValue, hiddenValue, availableIds });
+    const current = normalizeId(currentId);
+    if (!preferFirst && order.includes(current)) return current;
+    return order[0] || fallback;
+  }
+
   function hasViewDisplayPreferences(orderValue, hiddenValue, views) {
     const rawOrder = new Set(csvItems(orderValue).map(normalizeId).filter(Boolean));
     const hasKnownOrder = normalizeViewDisplayOrder(orderValue, views).some((id) => rawOrder.has(id));
@@ -110,6 +117,7 @@
     normalizeHiddenViews,
     normalizeViewDisplayOrder,
     orderedViews,
+    preferredViewId,
     reorderViewDisplayOrder,
     visibleViewOrder
   };

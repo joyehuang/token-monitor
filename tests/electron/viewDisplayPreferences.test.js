@@ -9,6 +9,7 @@ const {
   normalizeHiddenViews,
   normalizeViewDisplayOrder,
   orderedViews,
+  preferredViewId,
   reorderViewDisplayOrder,
   visibleViewOrder
 } = require('../../src/electron/renderer/viewDisplayPreferences');
@@ -87,6 +88,34 @@ test('visibleViewOrder falls back to the first available view when preferences h
       availableIds: ['tool', 'device', 'model', 'session']
     }),
     ['tool']
+  );
+});
+
+test('preferredViewId can use the first visible view for cold startup', () => {
+  assert.equal(
+    preferredViewId({
+      views,
+      orderValue: 'limits,tool,device,model,session',
+      hiddenValue: '',
+      availableIds: ['tool', 'device', 'model', 'session', 'limits'],
+      currentId: 'tool',
+      preferFirst: true
+    }),
+    'limits'
+  );
+});
+
+test('preferredViewId preserves an explicit current view when it is still visible', () => {
+  assert.equal(
+    preferredViewId({
+      views,
+      orderValue: 'limits,tool,device,model,session',
+      hiddenValue: '',
+      availableIds: ['tool', 'device', 'model', 'session', 'limits'],
+      currentId: 'model',
+      preferFirst: false
+    }),
+    'model'
   );
 });
 

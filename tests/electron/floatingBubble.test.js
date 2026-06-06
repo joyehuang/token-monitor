@@ -118,6 +118,15 @@ test('floatingBubbleInitialRendererQuery preserves renderer view state across wi
   );
   assert.deepEqual(
     floatingBubbleInitialRendererQuery(
+      { collapsed: false, side: null },
+      {
+        viewState: { period: 'today', breakdown: 'status' }
+      }
+    ),
+    { breakdown: 'status' }
+  );
+  assert.deepEqual(
+    floatingBubbleInitialRendererQuery(
       { collapsed: true, side: 'left' },
       {
         collapsedWindow: true,
