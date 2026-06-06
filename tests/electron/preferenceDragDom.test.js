@@ -26,6 +26,16 @@ function cssRule(source, selector) {
   return match[1];
 }
 
+const settingsIconAssets = {
+  general: 'general.svg',
+  main: 'main.svg',
+  window: 'window.svg',
+  tools: 'collection.svg',
+  limits: 'limits.svg',
+  accounts: 'accounts.svg',
+  sync: 'sync.svg'
+};
+
 test('preference drag only selects sortable rows, not nested controls', () => {
   const body = functionBody(readRendererFile('app.js'), 'preferenceRows', 'preferenceOrder');
   assert.match(body, /\.tool-preference-row\[data-client\]/);
@@ -45,18 +55,23 @@ test('preference drag does not animate row transforms during pointer movement', 
   assert.doesNotMatch(cssRule(css, '.preference-order-handle'), /transition:\s*transform/);
 });
 
-test('tool preference controls use compact header actions without icon-only legends', () => {
+test('tool preference controls place compact actions beside the note without duplicate headers', () => {
   const html = readRendererFile('index.html');
   const group = html.match(/<div class="settings-subgroup settings-tools-subgroup">[\s\S]*?<div id="clientDisplayList"/)?.[0] || '';
   assert.match(html, /<div class="settings-group settings-collapsible-group settings-tools-group"/);
-  assert.match(group, /<div class="settings-group-header settings-tools-header">/);
+  assert.match(group, /<div class="settings-note-row">/);
+  assert.match(group, /<p class="settings-note" data-i18n="settings\.tools\.note">[\s\S]*?<div class="tool-header-actions">/);
   assert.match(group, /<div class="tool-header-actions">/);
   assert.match(group, /class="tool-header-action"/);
+  assert.doesNotMatch(group, /settings-tools-header/);
+  assert.doesNotMatch(group, /settings\.tools\.title/);
   assert.doesNotMatch(group, /<div class="settings-actions tool-settings-actions">/);
   assert.doesNotMatch(group, /class="tool-preference-head"/);
   assert.doesNotMatch(group, /tool-preference-legend-/);
 
   const css = readRendererFile('styles.css');
+  assert.match(cssRule(css, '.settings-note-row'), /grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
+  assert.match(cssRule(css, '.settings-note-row'), /align-items:\s*center/);
   assert.match(cssRule(css, '.tool-preference-row'), /grid-template-columns:\s*minmax\(0,\s*1fr\) repeat\(4,\s*22px\)/);
   assert.match(cssRule(css, '.tool-preference-actions'), /display:\s*contents/);
   assert.doesNotMatch(css, /\.tool-preference-head/);
@@ -71,14 +86,18 @@ test('tool preference rows include compact per-tool pin controls', () => {
   assert.match(body, /onClientPinnedToggle/);
 });
 
-test('view preferences use compact visibility and order controls', () => {
+test('view preferences place compact actions beside the note without duplicate headers', () => {
   const html = readRendererFile('index.html');
   const group = html.match(/<div class="settings-subgroup settings-main-screen-group">[\s\S]*?<div id="viewDisplayList"/)?.[0] || '';
   assert.match(html, /<div class="settings-group settings-collapsible-group settings-main-group"/);
-  assert.match(group, /<div class="settings-group-header settings-views-header">/);
+  assert.match(group, /<div class="settings-note-row">/);
+  assert.match(group, /<p class="settings-note" data-i18n="settings\.views\.note">[\s\S]*?<div class="tool-header-actions">/);
   assert.match(group, /<div class="tool-header-actions">/);
   assert.match(group, /id="resetViewDisplayOrderButton"/);
   assert.match(group, /id="showAllViewsButton"/);
+  assert.doesNotMatch(group, /settings-views-header/);
+  assert.doesNotMatch(group, /settings\.views\.title/);
+  assert.doesNotMatch(group, /viewsSettingsSummary/);
   assert.doesNotMatch(group, /class="view-preference-head"/);
 
   const body = functionBody(readRendererFile('app.js'), 'renderViewPreferences', 'renderToolPreferences');
@@ -102,7 +121,6 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(html, /id="mainSettingsSummary"/);
   assert.match(html, /id="windowSettingsSummary"/);
   assert.match(html, /id="toolsSettingsSummary"/);
-  assert.match(html, /id="viewsSettingsSummary"/);
   assert.match(html, /id="limitsSettingsSummary"/);
   assert.match(html, /data-settings-section="general"/);
   assert.match(html, /data-settings-section="main"/);
@@ -117,11 +135,17 @@ test('settings page uses collapsible icon sections with summaries', () => {
   assert.match(app, /renderSettingsSummaries/);
   assert.match(app, /settingsSectionSummary/);
   assert.match(app, /for \(const other of SETTINGS_SECTION_IDS\)/);
+  assert.doesNotMatch(app, /viewsSettingsSummary/);
 
   const css = readRendererFile('styles.css');
   assert.match(css, /\.settings-section-toggle/);
   assert.match(css, /\.settings-section-icon/);
   assert.match(css, /\.settings-section-summary/);
+  assert.match(cssRule(css, '.settings-section-icon'), /mask:\s*var\(--settings-section-icon-url\)/);
+  for (const [section, asset] of Object.entries(settingsIconAssets)) {
+    assert.match(cssRule(css, `.settings-section-icon-${section}`), new RegExp(`icons/settings/${asset}`));
+    assert.ok(fs.existsSync(path.join(rendererDir, 'icons', 'settings', asset)), `${asset} should be local`);
+  }
 });
 
 test('main section holds views and appearance; window section holds behavior and presence', () => {
@@ -155,6 +179,8 @@ test('main section holds views and appearance; window section holds behavior and
   const windowGroup = windowSection.match(/<div class="settings-subgroup settings-window-group">[\s\S]*?<div class="settings-subgroup settings-presence-group">/)?.[0] || '';
   assert.match(windowGroup, /id="windowBehaviorInput"/);
   assert.match(windowGroup, /id="windowToggleShortcutRecordButton"/);
+  assert.doesNotMatch(windowGroup, /settings\.display\.windowTitle/);
+  assert.doesNotMatch(windowGroup, /<div class="settings-group-header"><span data-i18n="settings\.display\.windowTitle">/);
   assert.doesNotMatch(windowGroup, /id="floatingBubbleInput"/);
 
   const presenceGroup = windowSection.slice(presenceIndex);
@@ -171,16 +197,19 @@ test('general section owns app-level preferences before startup and updates', ()
   assert.match(generalSection, /settings-language-group/);
   assert.ok(generalSection.indexOf('settings-language-group') < generalSection.indexOf('id="startupGroup"'));
   assert.match(generalSection, /id="languageInput"/);
+  assert.doesNotMatch(generalSection, /settings\.language\.title/);
   assert.doesNotMatch(generalSection, /id="currencyInput"/);
 });
 
-test('sync section icon reads as a hub network instead of a refresh arrow', () => {
+test('sync section icon uses a local sync asset instead of a hand-drawn refresh arrow', () => {
+  const html = readRendererFile('index.html');
   const css = readRendererFile('styles.css');
-  const syncBefore = cssRule(css, '.settings-section-icon-sync::before');
-  const syncAfter = cssRule(css, '.settings-section-icon-sync::after');
-  assert.match(syncBefore, /box-shadow/);
-  assert.doesNotMatch(syncBefore, /inset:\s*2px/);
-  assert.doesNotMatch(syncAfter, /transform:\s*rotate/);
+  const icon = html.match(/<span class="settings-section-icon settings-section-icon-sync" aria-hidden="true"><\/span>/)?.[0] || '';
+  assert.notEqual(icon, '', 'sync icon should be a local masked icon span');
+  assert.match(cssRule(css, '.settings-section-icon-sync'), /icons\/settings\/sync\.svg/);
+  assert.doesNotMatch(html, /<svg class="settings-section-icon settings-section-icon-sync"/);
+  assert.doesNotMatch(css, /\.settings-section-icon-sync::(?:before|after)/);
+  assert.doesNotMatch(cssRule(css, '.settings-section-icon-sync'), /rotate/);
 });
 
 test('startup setting stays visible when login items are unsupported', () => {
@@ -199,7 +228,9 @@ test('startup setting stays visible when login items are unsupported', () => {
 
 test('expanded settings sections keep content full width', () => {
   const css = readRendererFile('styles.css');
-  assert.doesNotMatch(cssRule(css, '.settings-section-details'), /padding:\s*[^;]*24px/);
+  const detailsRule = cssRule(css, '.settings-section-details');
+  assert.match(detailsRule, /padding:\s*2px 0 10px 4px/);
+  assert.doesNotMatch(detailsRule, /padding:\s*[^;]*\s24px\b/);
 });
 
 test('renderer applies the first visible view on cold startup only', () => {

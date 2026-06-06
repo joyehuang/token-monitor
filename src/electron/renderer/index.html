@@ -38,7 +38,6 @@
           </button>
           <div id="generalSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-language-group">
-              <div class="settings-group-header"><span data-i18n="settings.language.title">Language</span></div>
               <label><span data-i18n="settings.language.label">Interface language</span>
                 <select id="languageInput">
                   <option value="auto" data-i18n="settings.language.auto">Auto (system)</option>
@@ -101,17 +100,13 @@
           </button>
           <div id="mainSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-main-screen-group">
-              <div class="settings-group-header settings-views-header">
-                <span data-i18n="settings.views.title">Views</span>
-                <div class="settings-subheader-actions">
-                  <span id="viewsSettingsSummary" class="settings-subgroup-summary"></span>
-                  <div class="tool-header-actions">
-                    <button id="resetViewDisplayOrderButton" class="tool-header-action" type="button" title="Reset order" aria-label="Reset order" data-i18n-title="settings.views.resetOrder" data-i18n-aria-label="settings.views.resetOrder"><span aria-hidden="true">↺</span></button>
-                    <button id="showAllViewsButton" class="tool-header-action" type="button" title="Show all" aria-label="Show all" data-i18n-title="settings.views.showAll" data-i18n-aria-label="settings.views.showAll"><span class="tool-header-eye" aria-hidden="true"></span></button>
-                  </div>
+              <div class="settings-note-row">
+                <p class="settings-note" data-i18n="settings.views.note">Choose which main views appear and the order of the mode button.</p>
+                <div class="tool-header-actions">
+                  <button id="resetViewDisplayOrderButton" class="tool-header-action" type="button" title="Reset order" aria-label="Reset order" data-i18n-title="settings.views.resetOrder" data-i18n-aria-label="settings.views.resetOrder"><span aria-hidden="true">↺</span></button>
+                  <button id="showAllViewsButton" class="tool-header-action" type="button" title="Show all" aria-label="Show all" data-i18n-title="settings.views.showAll" data-i18n-aria-label="settings.views.showAll"><span class="tool-header-eye" aria-hidden="true"></span></button>
                 </div>
               </div>
-              <p class="settings-note" data-i18n="settings.views.note">Choose which main views appear and the order of the mode button.</p>
               <div id="viewDisplayList" class="tool-preference-list"></div>
               <label><span data-i18n="settings.currency.label">Currency</span>
                 <select id="currencyInput">
@@ -142,7 +137,6 @@
           </button>
           <div id="windowSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-window-group">
-              <div class="settings-group-header"><span data-i18n="settings.display.windowTitle">Window</span></div>
               <label><span data-i18n="settings.display.windowBehavior">Window behavior</span>
                 <select id="windowBehaviorInput">
                   <option value="floating" data-i18n="settings.windowBehavior.floating">Floating above apps</option>
@@ -163,46 +157,54 @@
             </div>
             <div class="settings-subgroup settings-presence-group">
               <div class="settings-group-header"><span data-i18n="settings.display.presenceTitle">Floating & Tray</span></div>
-              <label class="checkbox-label"><input id="floatingBubbleInput" type="checkbox" /><span data-i18n="settings.display.floatingBubble">Floating Bubble</span></label>
-              <p class="settings-note" data-i18n="settings.display.floatingBubbleNote">Collapse the widget into a slim draggable mini-window; click it to reopen.</p>
-              <label id="floatingBubbleTriggerRow"><span data-i18n="settings.display.floatingBubbleTrigger">Open on</span>
-                <select id="floatingBubbleTriggerInput">
-                  <option value="click" data-i18n="settings.floatingBubbleTrigger.click">Click</option>
-                  <option value="hover" data-i18n="settings.floatingBubbleTrigger.hover">Hover (preview)</option>
-                </select>
-              </label>
-              <label id="floatingBubbleContentRow"><span data-i18n="settings.display.floatingBubbleContent">Bubble display</span>
-                <select id="floatingBubbleContentInput">
-                  <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
-                  <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
-                  <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
-                  <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
-                  <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
-                  <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
-                  <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
-                  <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
-                  <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
-                  <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two session limits</option>
-                  <option value="bars" data-i18n="settings.tray.barsWindow">Limit bars: lowest remaining limit</option>
-                </select>
-              </label>
-              <label class="checkbox-label"><input id="trayModeInput" type="checkbox" /><span data-i18n="settings.display.trayMode">Tray Mode</span></label>
-              <p class="settings-note" data-i18n="settings.display.trayNote">Hide the floating window; show a popover from the macOS menu bar or Windows system tray.</p>
-              <label><span data-i18n="settings.display.trayText">Tray text</span>
-                <select id="trayContentInput">
-                  <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
-                  <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
-                  <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
-                  <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
-                  <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
-                  <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
-                  <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
-                  <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
-                  <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two session limits</option>
-                  <option value="bars" data-i18n="settings.tray.barsWindow">Limit bars: lowest remaining limit</option>
-                  <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
-                </select>
-              </label>
+              <div class="presence-feature">
+                <label class="checkbox-label"><input id="floatingBubbleInput" type="checkbox" /><span data-i18n="settings.display.floatingBubble">Floating Bubble</span></label>
+                <div id="floatingBubbleOptions" class="presence-feature-body hidden">
+                  <p class="settings-note" data-i18n="settings.display.floatingBubbleNote">Collapse the widget into a slim draggable mini-window; click it to reopen.</p>
+                  <label id="floatingBubbleTriggerRow"><span data-i18n="settings.display.floatingBubbleTrigger">Open on</span>
+                    <select id="floatingBubbleTriggerInput">
+                      <option value="click" data-i18n="settings.floatingBubbleTrigger.click">Click</option>
+                      <option value="hover" data-i18n="settings.floatingBubbleTrigger.hover">Hover (preview)</option>
+                    </select>
+                  </label>
+                  <label id="floatingBubbleContentRow"><span data-i18n="settings.display.floatingBubbleContent">Bubble display</span>
+                    <select id="floatingBubbleContentInput">
+                      <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
+                      <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
+                      <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
+                      <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
+                      <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
+                      <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
+                      <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
+                      <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
+                      <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
+                      <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two session limits</option>
+                      <option value="bars" data-i18n="settings.tray.barsWindow">Limit bars: lowest remaining limit</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="presence-feature">
+                <label class="checkbox-label"><input id="trayModeInput" type="checkbox" /><span data-i18n="settings.display.trayMode">Tray Mode</span></label>
+                <div id="trayOptions" class="presence-feature-body hidden">
+                  <p class="settings-note" data-i18n="settings.display.trayNote">Hide the floating window; show a popover from the macOS menu bar or Windows system tray.</p>
+                  <label><span data-i18n="settings.display.trayText">Tray text</span>
+                    <select id="trayContentInput">
+                      <option value="tokens" data-i18n="settings.tray.tokensToday">Tokens Today (1.2M)</option>
+                      <option value="cost" data-i18n="settings.tray.costToday">Cost Today ($1.23)</option>
+                      <option value="both" data-i18n="settings.tray.bothToday">Tokens + Cost Today (1.2M - $1.23)</option>
+                      <option value="tokensAll" data-i18n="settings.tray.tokensTotal">Tokens Total (1.36B)</option>
+                      <option value="costAll" data-i18n="settings.tray.costTotal">Cost Total ($8.28)</option>
+                      <option value="bothAll" data-i18n="settings.tray.bothTotal">Tokens + Cost Total (1.36B - $8.28)</option>
+                      <option value="barsSession" data-i18n="settings.tray.barsSession">Limit bars: lowest session remaining</option>
+                      <option value="barsWeekly" data-i18n="settings.tray.barsWeekly">Limit bars: lowest weekly remaining</option>
+                      <option value="barsAllSessions" data-i18n="settings.tray.barsAllSessions">Limit bars: first two session limits</option>
+                      <option value="bars" data-i18n="settings.tray.barsWindow">Limit bars: lowest remaining limit</option>
+                      <option value="icon" data-i18n="settings.tray.iconOnly">Icon only</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -214,14 +216,13 @@
           </button>
           <div id="toolsSettingsDetails" class="settings-section-details hidden">
             <div class="settings-subgroup settings-tools-subgroup">
-              <div class="settings-group-header settings-tools-header">
-                <span data-i18n="settings.tools.title">Tools</span>
+              <div class="settings-note-row">
+                <p class="settings-note" data-i18n="settings.tools.note">Track controls collection. Show controls the main Tools list.</p>
                 <div class="tool-header-actions">
                   <button id="resetClientDisplayOrderButton" class="tool-header-action" type="button" title="Reset order" aria-label="Reset order" data-i18n-title="settings.tools.resetOrder" data-i18n-aria-label="settings.tools.resetOrder"><span aria-hidden="true">↺</span></button>
                   <button id="showAllClientsButton" class="tool-header-action" type="button" title="Show all" aria-label="Show all" data-i18n-title="settings.tools.showAll" data-i18n-aria-label="settings.tools.showAll"><span class="tool-header-eye" aria-hidden="true"></span></button>
                 </div>
               </div>
-              <p class="settings-note" data-i18n="settings.tools.note">Track controls collection. Show controls the main Tools list.</p>
               <div id="clientDisplayList" class="tool-preference-list"></div>
             </div>
           </div>

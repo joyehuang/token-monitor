@@ -425,7 +425,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   display: grid;
   min-width: 0;
   gap: 10px;
-  padding: 2px 0 10px;
+  padding: 2px 0 10px 4px;
 }
 .settings-section-details.hidden {
   display: none;
@@ -441,138 +441,41 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   padding-top: 0;
   border-top: 0;
 }
+.presence-feature { display: grid; min-width: 0; gap: 8px; }
+.presence-feature + .presence-feature {
+  padding-top: 10px;
+  border-top: 1px solid rgba(197, 216, 236, 0.09);
+}
+.presence-feature-body {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(197, 216, 236, 0.14);
+}
+.presence-feature-body.hidden { display: none; }
 .settings-collapsible-group.expanded > .settings-section-toggle .settings-section-disclosure {
   transform: rotate(180deg);
 }
 .settings-section-icon {
   position: relative;
   flex: 0 0 auto;
+  display: inline-block;
   width: 16px;
   height: 16px;
+  background-color: currentColor;
   color: var(--green);
   opacity: 0.9;
+  -webkit-mask: var(--settings-section-icon-url) center / contain no-repeat;
+  mask: var(--settings-section-icon-url) center / contain no-repeat;
 }
-.settings-section-icon::before,
-.settings-section-icon::after {
-  position: absolute;
-  display: block;
-  box-sizing: border-box;
-  content: "";
-}
-.settings-section-icon-sync::before {
-  left: 1px;
-  top: 7px;
-  width: 4px;
-  height: 4px;
-  background: currentColor;
-  border-radius: 50%;
-  box-shadow: 10px -5px 0 currentColor, 10px 5px 0 currentColor;
-}
-.settings-section-icon-sync::after {
-  left: 4px;
-  top: 5px;
-  width: 8px;
-  height: 8px;
-  border-top: 1.6px solid currentColor;
-  border-right: 1.6px solid currentColor;
-  border-bottom: 1.6px solid currentColor;
-  border-radius: 0 6px 6px 0;
-}
-.settings-section-icon-tools::before {
-  left: 3px;
-  top: 3px;
-  width: 10px;
-  height: 10px;
-  border-top: 1.6px solid currentColor;
-  border-bottom: 1.6px solid currentColor;
-}
-.settings-section-icon-tools::after {
-  left: 1px;
-  top: 7px;
-  width: 14px;
-  border-top: 1.6px solid currentColor;
-}
-.settings-section-icon-accounts::before {
-  left: 5px;
-  top: 2px;
-  width: 6px;
-  height: 6px;
-  border: 1.6px solid currentColor;
-  border-radius: 50%;
-}
-.settings-section-icon-accounts::after {
-  left: 2px;
-  bottom: 2px;
-  width: 12px;
-  height: 6px;
-  border: 1.6px solid currentColor;
-  border-radius: 8px 8px 2px 2px;
-}
-.settings-section-icon-limits::before {
-  left: 2px;
-  top: 4px;
-  width: 12px;
-  height: 10px;
-  border: 1.6px solid currentColor;
-  border-bottom-color: transparent;
-  border-radius: 12px 12px 0 0;
-}
-.settings-section-icon-limits::after {
-  left: 7px;
-  top: 8px;
-  width: 1.6px;
-  height: 6px;
-  background: currentColor;
-  border-radius: 999px;
-  transform: rotate(38deg);
-  transform-origin: bottom center;
-}
-.settings-section-icon-main::before {
-  left: 2px;
-  top: 3px;
-  width: 12px;
-  height: 9px;
-  border: 1.6px solid currentColor;
-  border-radius: 2px;
-}
-.settings-section-icon-main::after {
-  left: 5px;
-  bottom: 1px;
-  width: 6px;
-  height: 3px;
-  border-top: 1.6px solid currentColor;
-}
-.settings-section-icon-window::before {
-  left: 2px;
-  top: 3px;
-  width: 12px;
-  height: 10px;
-  border: 1.6px solid currentColor;
-  border-radius: 2px;
-}
-.settings-section-icon-window::after {
-  left: 2px;
-  top: 6px;
-  width: 12px;
-  border-top: 1.6px solid currentColor;
-}
-.settings-section-icon-general::before {
-  left: 3px;
-  top: 3px;
-  width: 10px;
-  height: 10px;
-  border: 1.6px solid currentColor;
-  border-radius: 3px;
-}
-.settings-section-icon-general::after {
-  left: 6px;
-  top: 1px;
-  width: 4px;
-  height: 4px;
-  border: 1.6px solid currentColor;
-  border-radius: 2px;
-  background: rgba(16, 21, 30, 0.95);
-}
+.settings-section-icon-general { --settings-section-icon-url: url("icons/settings/general.svg"); }
+.settings-section-icon-main { --settings-section-icon-url: url("icons/settings/main.svg"); }
+.settings-section-icon-window { --settings-section-icon-url: url("icons/settings/window.svg"); }
+.settings-section-icon-tools { --settings-section-icon-url: url("icons/settings/collection.svg"); }
+.settings-section-icon-limits { --settings-section-icon-url: url("icons/settings/limits.svg"); }
+.settings-section-icon-accounts { --settings-section-icon-url: url("icons/settings/accounts.svg"); }
+.settings-section-icon-sync { --settings-section-icon-url: url("icons/settings/sync.svg"); }
 .cursor-settings-toggle {
   width: 100%;
   padding: 0;
@@ -843,8 +746,12 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   border-color: var(--line);
   background: rgba(255, 255, 255, var(--control-alpha));
 }
-.settings-tools-header {
+.settings-note-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .tool-header-actions {
   display: flex;

@@ -147,6 +147,8 @@ const els = {
   shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), cost: document.getElementById('cost'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), breakdownToggle: document.getElementById('breakdownToggle'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutRecordButton: document.getElementById('windowToggleShortcutRecordButton'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), openConfigButton: document.getElementById('openConfigButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
 };
 Object.assign(els, {
+  floatingBubbleOptions: document.getElementById('floatingBubbleOptions'),
+  trayOptions: document.getElementById('trayOptions'),
   hubModeOptions: document.getElementById('hubModeOptions'),
   hubClientFields: document.getElementById('hubClientFields'),
   hubHostFields: document.getElementById('hubHostFields'),
@@ -188,7 +190,6 @@ Object.assign(els, {
   toolsSettingsSummary: document.getElementById('toolsSettingsSummary'),
   accountsSettingsSummary: document.getElementById('accountsSettingsSummary'),
   limitsSettingsSummary: document.getElementById('limitsSettingsSummary'),
-  viewsSettingsSummary: document.getElementById('viewsSettingsSummary'),
   generalSettingsSummary: document.getElementById('generalSettingsSummary'),
   mainSettingsSummary: document.getElementById('mainSettingsSummary'),
   windowSettingsSummary: document.getElementById('windowSettingsSummary'),
@@ -265,23 +266,6 @@ function refreshIntervalLabel(value) {
   return t('settings.summary.minutes', { minutes });
 }
 
-function cursorAccountSummary() {
-  if (state.cursorAccount.error) return t('settings.common.error');
-  const status = state.cursorAccount.status;
-  if (!status) return t('settings.common.checking');
-  if (status.expired) return t('settings.cursor.expired');
-  return status.loggedIn ? t('settings.cursor.loggedIn') : t('settings.cursor.notLoggedIn');
-}
-
-function opencodeAccountSummary() {
-  if (state.opencodeAccount.error) return t('settings.common.error');
-  const status = state.opencodeAccount.status;
-  if (!status) return t('settings.common.checking');
-  if (status.saveFailed || status.error) return t('settings.common.error');
-  if (status.expired) return t('settings.opencode.expired');
-  return status.linked ? t('settings.opencode.statusLinked') : t('settings.opencode.statusNotSet');
-}
-
 function viewsSummary() {
   const hidden = hiddenViewSet();
   const visible = VIEW_DISPLAY_OPTIONS.length - hidden.size;
@@ -303,9 +287,11 @@ function settingsSectionSummary(section) {
     });
   }
   if (section === 'accounts') {
+    const cursorLinked = Boolean(state.cursorAccount.status?.loggedIn) && !state.cursorAccount.status?.expired;
+    const opencodeLinked = Boolean(state.opencodeAccount.status?.linked) && !state.opencodeAccount.status?.expired;
     return t('settings.summary.accounts', {
-      cursor: cursorAccountSummary(),
-      opencode: opencodeAccountSummary()
+      linked: (cursorLinked ? 1 : 0) + (opencodeLinked ? 1 : 0),
+      total: 2
     });
   }
   if (section === 'limits') {
@@ -337,7 +323,6 @@ function renderSettingsSummaries() {
     const el = els[`${section}SettingsSummary`];
     if (el) el.textContent = settingsSectionSummary(section);
   }
-  if (els.viewsSettingsSummary) els.viewsSettingsSummary.textContent = state.settings ? viewsSummary() : '';
 }
 
 function formatNumber(value) { return Math.round(Number(value || 0)).toLocaleString('en-US'); }
@@ -1841,11 +1826,11 @@ function syncSettingsForm() {
   syncWindowBehaviorControls();
   els.floatingBubbleInput.checked = state.settings.floatingBubbleEnabled === true;
   if (els.floatingBubbleTriggerInput) els.floatingBubbleTriggerInput.value = state.settings.floatingBubbleTrigger === 'hover' ? 'hover' : 'click';
-  els.floatingBubbleTriggerRow?.classList.toggle('hidden', state.settings.floatingBubbleEnabled !== true);
   if (els.floatingBubbleContentInput) els.floatingBubbleContentInput.value = normalizeTrayContentValue(state.settings.floatingBubbleContent);
-  els.floatingBubbleContentRow?.classList.toggle('hidden', state.settings.floatingBubbleEnabled !== true);
+  els.floatingBubbleOptions?.classList.toggle('hidden', state.settings.floatingBubbleEnabled !== true);
   els.trayModeInput.checked = Boolean(state.settings.trayMode);
   els.trayContentInput.value = ['tokens', 'cost', 'both', 'tokensAll', 'costAll', 'bothAll', 'bars', 'barsSession', 'barsWeekly', 'barsAllSessions', 'icon'].includes(state.settings.trayContent) ? state.settings.trayContent : 'tokens';
+  els.trayOptions?.classList.toggle('hidden', !state.settings.trayMode);
   syncWindowShortcutStatus();
   if (els.startAtLoginInput) {
     els.startAtLoginInput.disabled = !state.appInfo?.loginItemSupported;
@@ -2532,8 +2517,7 @@ els.titleIconInput.addEventListener('change', saveAppearanceFromControls);
 els.discordRpcInput.addEventListener('change', saveAppearanceFromControls);
 els.windowBehaviorInput.addEventListener('change', () => saveSettings({ windowBehavior: els.windowBehaviorInput.value }));
 els.floatingBubbleInput.addEventListener('change', () => {
-  els.floatingBubbleTriggerRow?.classList.toggle('hidden', !els.floatingBubbleInput.checked);
-  els.floatingBubbleContentRow?.classList.toggle('hidden', !els.floatingBubbleInput.checked);
+  els.floatingBubbleOptions?.classList.toggle('hidden', !els.floatingBubbleInput.checked);
   saveSettings({ floatingBubbleEnabled: els.floatingBubbleInput.checked });
 });
 els.floatingBubbleTriggerInput?.addEventListener('change', () => saveSettings({ floatingBubbleTrigger: els.floatingBubbleTriggerInput.value }));
@@ -2541,7 +2525,10 @@ els.floatingBubbleContentInput?.addEventListener('change', async () => {
   await saveSettings({ floatingBubbleContent: els.floatingBubbleContentInput.value });
   renderFloatingBubbleContent();
 });
-els.trayModeInput.addEventListener('change', () => saveSettings({ trayMode: els.trayModeInput.checked }));
+els.trayModeInput.addEventListener('change', () => {
+  els.trayOptions?.classList.toggle('hidden', !els.trayModeInput.checked);
+  saveSettings({ trayMode: els.trayModeInput.checked });
+});
 els.trayContentInput.addEventListener('change', () => saveSettings({ trayContent: els.trayContentInput.value }));
 els.windowToggleShortcutRecordButton?.addEventListener('click', startWindowShortcutRecording);
 els.windowToggleShortcutClearButton?.addEventListener('click', () => setWindowToggleShortcut('').catch(() => {}));
