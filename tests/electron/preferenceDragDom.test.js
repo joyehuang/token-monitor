@@ -189,7 +189,7 @@ test('main section holds views and appearance; window section holds behavior and
   assert.match(presenceGroup, /id="trayModeInput"/);
 });
 
-test('trend history collection is controlled from an expandable Trends settings row', () => {
+test('Trends has a master toggle separate from main-screen visibility', () => {
   const app = readRendererFile('app.js');
   const css = readRendererFile('styles.css');
   assert.match(app, /id === 'trends'/);
@@ -197,10 +197,22 @@ test('trend history collection is controlled from an expandable Trends settings 
   assert.match(app, /function renderTrendSettingsList/);
   assert.match(app, /id = 'trendSettingsList'|id: 'trendSettingsList'|'trendSettingsList'/);
   assert.match(app, /settings\.views\.configureTrend/);
+  assert.match(app, /settings\.views\.enableTrend/);
+  assert.match(app, /function setTrendEnabled/);
   assert.match(app, /historyEnabled:\s*enabled/);
+  assert.match(app, /hiddenViews:\s*nextHiddenViews/);
+  assert.match(app, /onTrendVisibilityToggle/);
+  assert.match(app, /setTrendEnabled\(true\)/);
   assert.match(app, /row\.classList\.toggle\('is-disabled'/);
   assert.match(css, /\.view-preference-row\.is-disabled/);
   assert.match(css, /\.trend-settings-list/);
+});
+
+test('view visibility changes do not toggle trend history collection', () => {
+  const app = readRendererFile('app.js');
+  const body = functionBody(app, 'onViewVisibilityToggle', 'onTrendVisibilityToggle');
+  assert.match(body, /saveSettings\(\{\s*hiddenViews:/);
+  assert.doesNotMatch(body, /historyEnabled/);
 });
 
 test('settings saves preserve the settings panel scroll position during rerender', () => {

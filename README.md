@@ -190,13 +190,14 @@ TOKEN_MONITOR_HUB_URL=               # required for sync mode — Worker URL or 
 TOKEN_MONITOR_SECRET=                # shared secret, must match the hub
 TOKEN_MONITOR_DEVICE_ID=             # optional — defaults to hostname
 TOKEN_MONITOR_CLIENTS=               # optional — defaults to all supported tools; set empty to disable tracking
+TOKEN_MONITOR_HISTORY_ENABLED=       # optional — defaults to disabled; set to 1 to collect Trends history
 TOKEN_MONITOR_LIMITS_ENABLED=        # optional — defaults to enabled; set to 0 to skip CLI probing
 TOKEN_MONITOR_LIMIT_PROVIDERS=       # optional — defaults to all supported (claude, codex, cursor, antigravity, opencode, deepseek)
 ```
 
 The widget reads the same env vars as first-run defaults, then takes over with its own GUI-managed settings.
 
-Every value can also be passed as a CLI flag (`--hub=`, `--secret=`, `--device=`, `--clients=`, `--limits=`, `--limitProviders=`) — flags win over env. Less-common knobs (`TOKEN_MONITOR_INTERVAL_MS`, `TOKEN_MONITOR_PORT`, `TOKEN_MONITOR_STALE_AFTER_MS`, `TOKEN_MONITOR_LIMITS_REFRESH_MS`, …) are also accepted via env / flag but kept out of `.env.example` to reduce noise.
+Every value can also be passed as a CLI flag (`--hub=`, `--secret=`, `--device=`, `--clients=`, `--history=`, `--limits=`, `--limitProviders=`) — flags win over env. Less-common knobs (`TOKEN_MONITOR_INTERVAL_MS`, `TOKEN_MONITOR_PORT`, `TOKEN_MONITOR_STALE_AFTER_MS`, `TOKEN_MONITOR_HISTORY_INTERVAL_MS`, `TOKEN_MONITOR_LIMITS_REFRESH_MS`, …) are also accepted via env / flag but kept out of `.env.example` to reduce noise.
 
 Example one-off run:
 

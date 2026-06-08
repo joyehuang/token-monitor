@@ -2227,24 +2227,25 @@ function renderViewPreferences() {
     const isHidden = hidden.has(id);
     const historyEnabled = state.settings?.historyEnabled !== false;
     const isDisabled = id === 'trends' && !historyEnabled;
+    const isEffectivelyHidden = isHidden || isDisabled;
     const row = document.createElement('div');
     row.className = 'view-preference-row';
     row.dataset.view = id;
-    row.classList.toggle('is-hidden', isHidden);
+    row.classList.toggle('is-hidden', isEffectivelyHidden);
     row.classList.toggle('is-disabled', isDisabled);
     const name = document.createElement('div');
     name.className = 'tool-preference-name';
     name.textContent = label;
     const visibility = document.createElement('button');
     visibility.type = 'button';
-    visibility.className = `tool-visibility-button${isHidden ? ' is-hidden' : ''}`;
+    visibility.className = `tool-visibility-button${isEffectivelyHidden ? ' is-hidden' : ''}`;
     visibility.dataset.view = id;
-    visibility.title = t(isHidden ? 'settings.views.showView' : 'settings.views.hideView', { name: label });
+    visibility.title = t(isEffectivelyHidden ? 'settings.views.showView' : 'settings.views.hideView', { name: label });
     visibility.setAttribute('aria-label', visibility.title);
-    visibility.setAttribute('aria-pressed', String(!isHidden));
-    visibility.disabled = !isHidden && visibleCount <= 1;
-    visibility.append(visibilityIcon(isHidden));
-    visibility.addEventListener('click', () => onViewVisibilityToggle(id));
+    visibility.setAttribute('aria-pressed', String(!isEffectivelyHidden));
+    visibility.disabled = !isEffectivelyHidden && visibleCount <= 1;
+    visibility.append(visibilityIcon(isEffectivelyHidden));
+    visibility.addEventListener('click', () => id === 'trends' ? onTrendVisibilityToggle() : onViewVisibilityToggle(id));
     const handle = createPreferenceOrderHandle({ kind: 'view', id, label, count: views.length });
     const actions = document.createElement('div');
     actions.className = 'tool-preference-actions';
@@ -2306,15 +2307,25 @@ function renderTrendSettingsList() {
   input.type = 'checkbox';
   input.checked = state.settings?.historyEnabled !== false;
   input.addEventListener('change', async () => {
-    const enabled = input.checked;
-    await saveSettings({ historyEnabled: enabled });
+    await setTrendEnabled(input.checked);
     await refreshStats({ force: true });
   });
   const text = document.createElement('span');
-  text.textContent = t('settings.views.historyCollection');
+  text.textContent = t('settings.views.enableTrend');
   label.append(input, text);
   wrap.append(label);
   return wrap;
+}
+
+async function setTrendEnabled(enabled) {
+  if (!enabled) {
+    await saveSettings({ historyEnabled: enabled });
+    return;
+  }
+  const hidden = hiddenViewSet();
+  hidden.delete('trends');
+  const nextHiddenViews = Array.from(hidden).join(',');
+  await saveSettings({ historyEnabled: enabled, hiddenViews: nextHiddenViews });
 }
 
 function renderServiceProviderList() {
@@ -2532,6 +2543,15 @@ async function onViewVisibilityToggle(viewId) {
   if (hidden.has(viewId)) hidden.delete(viewId);
   else hidden.add(viewId);
   await saveSettings({ hiddenViews: Array.from(hidden).join(',') });
+}
+
+async function onTrendVisibilityToggle() {
+  if (state.settings?.historyEnabled === false) {
+    await setTrendEnabled(true);
+    await refreshStats({ force: true });
+    return;
+  }
+  await onViewVisibilityToggle('trends');
 }
 
 async function onLimitProviderToggle() {

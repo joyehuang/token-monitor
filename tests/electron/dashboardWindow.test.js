@@ -35,10 +35,19 @@ test('getDashboardHistory mirrors the local/sync split of fetchStats', () => {
 
 test('dashboard history is gated by the historyEnabled setting', () => {
   const main = read('src', 'electron', 'main.js');
-  assert.match(main, /historyEnabled:\s*true/);
-  assert.match(main, /historyEnabled:\s*parseBoolean\(patch\.historyEnabled/);
+  assert.match(main, /historyEnabled:\s*false/);
+  assert.match(main, /historyEnabled:\s*parseBoolean\(patch\.historyEnabled[\s\S]*?,\s*false\)/);
   assert.match(main, /if \(settings\?\.historyEnabled === false\) return aggregateHistory\(\[\], 0\)/);
   assert.match(main, /historyEnabled:\s*settings\.historyEnabled !== false/);
+});
+
+test('agent history collection is opt-in by default', () => {
+  const agent = read('src', 'agent', 'agent.js');
+  const envExample = read('.env.example');
+  const readme = read('README.md');
+  assert.match(agent, /TOKEN_MONITOR_HISTORY_ENABLED,\s*false\)/);
+  assert.match(envExample, /TOKEN_MONITOR_HISTORY_ENABLED=0/);
+  assert.match(readme, /TOKEN_MONITOR_HISTORY_ENABLED=/);
 });
 
 test('dashboard.html wires the shared modules and the two panels', () => {

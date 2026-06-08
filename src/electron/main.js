@@ -145,7 +145,7 @@ function defaultSettings() {
     pinnedClients: '',
     viewDisplayOrder: '',
     hiddenViews: defaultViewDisplayPreferences().hiddenViews,
-    historyEnabled: true,
+    historyEnabled: false,
     serviceProviderDisplayOrder: '',
     hiddenServiceProviders: '',
     serviceStatusRefreshMs: 60000,
@@ -575,7 +575,7 @@ function readSettings() {
       merged.hiddenViews = normalizeHiddenViews(saved.hiddenViews, DEFAULT_VIEW_LIST);
     }
     if (saved.historyEnabled !== undefined) {
-      merged.historyEnabled = parseBoolean(saved.historyEnabled, true);
+      merged.historyEnabled = parseBoolean(saved.historyEnabled, false);
     }
     if (saved.serviceProviderDisplayOrder !== undefined) {
       merged.serviceProviderDisplayOrder = String(saved.serviceProviderDisplayOrder || '');
@@ -1792,7 +1792,7 @@ app.whenReady().then(() => {
       pinnedClients: patch.pinnedClients !== undefined ? normalizePinnedClients(patch.pinnedClients, DEFAULT_CLIENT_LIST) : normalizePinnedClients(settings.pinnedClients, DEFAULT_CLIENT_LIST),
       viewDisplayOrder: patch.viewDisplayOrder !== undefined ? migrateViewDisplayOrder(patch.viewDisplayOrder) : (settings.viewDisplayOrder || ''),
       hiddenViews: patch.hiddenViews !== undefined ? normalizeHiddenViews(patch.hiddenViews, DEFAULT_VIEW_LIST) : normalizeHiddenViews(settings.hiddenViews, DEFAULT_VIEW_LIST),
-      historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, true),
+      historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
       serviceProviderDisplayOrder: patch.serviceProviderDisplayOrder !== undefined ? String(patch.serviceProviderDisplayOrder || '') : (settings.serviceProviderDisplayOrder || ''),
       hiddenServiceProviders: patch.hiddenServiceProviders !== undefined ? String(patch.hiddenServiceProviders || '') : (settings.hiddenServiceProviders || ''),
       serviceStatusRefreshMs: normalizeServiceStatusRefreshMs(patch.serviceStatusRefreshMs ?? settings.serviceStatusRefreshMs),
