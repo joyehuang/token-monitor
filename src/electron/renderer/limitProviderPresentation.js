@@ -83,9 +83,6 @@
     if (provider === 'codex' && source === 'rpc' && CODEX_RPC_DETAIL_LABELS[sourceDetail]) {
       return CODEX_RPC_DETAIL_LABELS[sourceDetail];
     }
-    if (provider === 'claude' && source === 'oauth' && sourceDetail === 'cli') {
-      return 'OAuth + CLI';
-    }
     return PROVIDER_SOURCE_LABELS[provider]?.[source] || SOURCE_LABELS[source] || '';
   }
 

@@ -514,18 +514,11 @@ function valueFromAliases(object, aliases) {
   return undefined;
 }
 
-function normalizeClaudeUtilization(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return value;
-  if (number > 0 && number <= 1) return number * 100;
-  return number;
-}
-
 function claudeUsageWindowUsedPercent(window) {
   const explicit = valueFromAliases(window, ['usedPercent', 'used_percent']);
   if (explicit !== undefined) return explicit;
   const utilization = valueFromAliases(window, ['utilization', 'percent']);
-  return utilization === undefined ? undefined : normalizeClaudeUtilization(utilization);
+  return utilization;
 }
 
 function mapClaudeUsageToProvider(usage, meta = {}) {
@@ -555,36 +548,6 @@ function mapClaudeUsageToProvider(usage, meta = {}) {
     updatedAt: meta.updatedAt,
     windows
   });
-}
-
-function shouldPreferClaudeCliForOauth(provider, platform = process.platform) {
-  if (platform !== 'darwin') return false;
-  const session = provider?.windows?.find((window) => window.kind === 'session');
-  if (!session) return false;
-  const remaining = Number(session.remainingPercent);
-  const used = Number(session.usedPercent);
-  if (Number.isFinite(remaining)) return remaining <= 1;
-  return Number.isFinite(used) && used >= 99;
-}
-
-async function maybeUseClaudeCliInsteadOfOauth(oauthProvider, platform, nowMs, deps = {}) {
-  if (!shouldPreferClaudeCliForOauth(oauthProvider, platform)) return oauthProvider;
-  try {
-    const text = await runClaudeUsageCli(deps);
-    const cliProvider = mapClaudeCliUsageToProvider(text, {
-      updatedAt: nowIso(nowMs),
-      now: new Date(nowMs)
-    });
-    return normalizeLimitProvider({
-      ...cliProvider,
-      accountKey: oauthProvider?.accountKey || cliProvider.accountKey,
-      accountLabel: oauthProvider?.accountLabel || cliProvider.accountLabel,
-      source: 'oauth',
-      sourceDetail: 'cli'
-    });
-  } catch (_) {
-    return oauthProvider;
-  }
 }
 
 async function refreshClaudeAccessToken(refreshToken, deps = {}) {
@@ -724,7 +687,7 @@ async function fetchClaudeLimits(options = {}, deps = {}) {
       updatedAt: nowIso(nowMs),
       source: 'oauth'
     });
-    return maybeUseClaudeCliInsteadOfOauth(provider, platform, nowMs, deps);
+    return provider;
   } catch (error) {
     if (!shouldTryClaudeCliFallback(error)) throw error;
     try {

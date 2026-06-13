@@ -78,15 +78,6 @@ test('detected settings tags show only current source after status', () => {
       .map((tag) => tag.label),
     ['Linked', 'Web']
   );
-  assert.deepEqual(
-    limitProviderSettingsTags({ provider: 'claude', status: 'ok', source: 'oauth', sourceDetail: 'cli' })
-      .map((tag) => tag.label),
-    ['Live', 'OAuth + CLI']
-  );
-  assert.equal(
-    limitProviderSourceLabel({ provider: 'claude', source: 'oauth', sourceDetail: 'cli' }),
-    'OAuth + CLI'
-  );
 });
 
 test('remote synced provider tags show the selected source device and local availability', () => {

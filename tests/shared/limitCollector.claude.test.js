@@ -137,7 +137,8 @@ test('Claude OAuth usage mapping accepts camelCase response fields', async () =>
   assert.equal(provider.windows[1].resetsAt, '2026-06-18T00:00:00.000Z');
 });
 
-test('Claude OAuth usage mapping normalizes fractional utilization values', async () => {
+test('Claude OAuth usage mapping preserves fractional percentage utilization values', async () => {
+  let cliCalls = 0;
   const provider = await fetchClaudeLimits({}, {
     platform: 'darwin',
     now: () => Date.parse('2026-06-11T00:00:00Z'),
@@ -153,7 +154,7 @@ test('Claude OAuth usage mapping normalizes fractional utilization values', asyn
       ok: true,
       json: async () => ({
         fiveHour: {
-          utilization: 0.01,
+          utilization: 0.99,
           resetsAt: '2026-06-11T08:00:00Z'
         },
         sevenDay: {
@@ -161,16 +162,24 @@ test('Claude OAuth usage mapping normalizes fractional utilization values', asyn
           resetsAt: '2026-06-18T10:00:00Z'
         }
       })
-    })
+    }),
+    runClaudeUsageCli: async () => {
+      cliCalls += 1;
+      return '';
+    }
   });
 
-  assert.equal(provider.windows[0].usedPercent, 1);
-  assert.equal(provider.windows[0].remainingPercent, 99);
+  assert.equal(provider.source, 'oauth');
+  assert.equal(provider.sourceDetail, '');
+  assert.equal(provider.windows[0].usedPercent, 0.99);
+  assert.equal(provider.windows[0].remainingPercent, 99.01);
   assert.equal(provider.windows[1].usedPercent, 0);
   assert.equal(provider.windows[1].remainingPercent, 100);
+  assert.equal(cliCalls, 0);
 });
 
-test('Claude limits on macOS prefer CLI usage when OAuth reports an exhausted session', async () => {
+test('Claude limits keep successful OAuth quota on macOS instead of replacing it with CLI', async () => {
+  let cliCalls = 0;
   const provider = await fetchClaudeLimits({}, {
     platform: 'darwin',
     now: () => Date.parse('2026-06-11T00:00:00Z'),
@@ -195,25 +204,30 @@ test('Claude limits on macOS prefer CLI usage when OAuth reports an exhausted se
         }
       })
     }),
-    runClaudeUsageCli: async () => [
-      'Current session',
-      '1% used',
-      'Resets 3:59pm',
-      'Current week',
-      '0% used',
-      'Resets Jun 19'
-    ].join('\n')
+    runClaudeUsageCli: async () => {
+      cliCalls += 1;
+      return [
+        'Current session',
+        '1% used',
+        'Resets 3:59pm',
+        'Current week',
+        '0% used',
+        'Resets Jun 19'
+      ].join('\n');
+    }
   });
 
   assert.equal(provider.source, 'oauth');
-  assert.equal(provider.sourceDetail, 'cli');
-  assert.equal(provider.windows[0].usedPercent, 1);
-  assert.equal(provider.windows[0].remainingPercent, 99);
+  assert.equal(provider.sourceDetail, '');
+  assert.equal(provider.windows[0].usedPercent, 100);
+  assert.equal(provider.windows[0].remainingPercent, 0);
   assert.equal(provider.windows[1].usedPercent, 0);
   assert.equal(provider.windows[1].remainingPercent, 100);
+  assert.equal(cliCalls, 0);
 });
 
-test('Claude macOS CLI replacement preserves OAuth plan label', async () => {
+test('Claude successful OAuth keeps plan label without probing CLI', async () => {
+  let cliCalls = 0;
   const provider = await fetchClaudeLimits({}, {
     platform: 'darwin',
     now: () => Date.parse('2026-06-11T00:00:00Z'),
@@ -240,20 +254,24 @@ test('Claude macOS CLI replacement preserves OAuth plan label', async () => {
         }
       })
     }),
-    runClaudeUsageCli: async () => [
-      'Current session',
-      '1% used',
-      'Resets 3:59pm',
-      'Current week',
-      '0% used',
-      'Resets Jun 19'
-    ].join('\n')
+    runClaudeUsageCli: async () => {
+      cliCalls += 1;
+      return [
+        'Current session',
+        '1% used',
+        'Resets 3:59pm',
+        'Current week',
+        '0% used',
+        'Resets Jun 19'
+      ].join('\n');
+    }
   });
 
   assert.equal(provider.source, 'oauth');
-  assert.equal(provider.sourceDetail, 'cli');
+  assert.equal(provider.sourceDetail, '');
   assert.equal(provider.accountLabel, 'Max 5x');
-  assert.equal(provider.windows[0].remainingPercent, 99);
+  assert.equal(provider.windows[0].remainingPercent, 0);
+  assert.equal(cliCalls, 0);
 });
 
 test('Claude CLI usage parses compact PTY reset lines', () => {
