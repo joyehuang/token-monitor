@@ -5,15 +5,14 @@
 ## What's changed
 
 ### Added
-- Codex Accounts in Settings -> Accounts can now add isolated managed Codex logins, so Token Monitor can track multiple Codex accounts without disturbing the live Codex CLI session.
-- AI Tool Limits now has a default-off Show active account option that marks the Codex account signed in on this device, including when synced account rows are visible.
+- Settings -> Collection -> Custom model pricing now lets you override a model's USD-per-1M-token rates when the detected price is wrong.
+- Custom pricing can pre-fill the current detected model price and writes tokscale-compatible `custom-pricing.json` overrides for collection.
 
 ### Improved
-- The refresh button now shows in-progress, success, failure, and last-refreshed feedback.
-- Bundled tokscale was updated to 3.1.3.
+- Multi-device Sync now shows clearer Hub stream status and offline reasons, including wrong secret, refused connection, timeout, DNS, unreachable network, and reconnecting states.
 
 ### Fixed
-- Hubs without a shared secret no longer serve private data beyond localhost. Worker hubs now require `TOKEN_MONITOR_SECRET` before private data routes respond.
+- Host hub mode now serves this device's own usage in-process instead of relying on a loopback HTTP connection, so local host-mode stats keep working when loopback is blocked or unavailable.
 
 ## Which file should I download?
 
@@ -48,15 +47,14 @@ open-source: https://github.com/junhoyeo/tokscale
 ## 更新内容
 
 ### 新增
-- 设置 -> 账号 中新增 Codex 账号，可添加独立的受管 Codex 登录，让 Token Monitor 追踪多个 Codex 账号，同时不影响当前 Codex CLI 会话。
-- AI 工具限制新增默认关闭的“显示使用中账号”选项，可标记本机当前登录的 Codex 账号；同步账号行可见时也会正确显示。
+- 设置 -> 采集 -> 自定义模型单价 现在可以覆盖某个模型的 USD / 1M tokens 单价，用于修正自动检测价格不准确的情况。
+- 自定义单价可自动带入当前检测到的模型价格，并写入兼容 tokscale 的 `custom-pricing.json` 覆盖配置。
 
 ### 改进
-- 刷新按钮现在会显示刷新中、成功、失败和上次刷新时间反馈。
-- 内置 tokscale 已更新到 3.1.3。
+- 多设备同步现在会显示更清楚的 Hub 串流状态和离线原因，包括密钥错误、连接被拒、连接超时、DNS、网络不可达和正在重连等状态。
 
 ### 修复
-- 未设置共享密钥的 Hub 不再向 localhost 之外提供私有数据。Worker Hub 现在必须设置 `TOKEN_MONITOR_SECRET` 后，私有数据接口才会响应。
+- Host Hub 模式现在会在进程内提供本机用量，不再依赖回环 HTTP 连接；当 loopback 被阻止或不可用时，本机 host-mode 统计仍可正常工作。
 
 ## 应该下载哪个文件？
 
