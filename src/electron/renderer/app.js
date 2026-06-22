@@ -153,7 +153,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeActivityScrollLeft: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false, settingsInTitlebar: false };
 let preferenceDrag = null;
@@ -2003,13 +2003,30 @@ function dailyWithHeatIntensity(daily) {
   });
 }
 
+function applyHomeActivityScroll(scroller) {
+  const target = homeOverviewApi.homeActivityScrollTarget({
+    scrollWidth: scroller.scrollWidth,
+    clientWidth: scroller.clientWidth,
+    followEnd: state.homeActivityFollowEnd,
+    savedLeft: state.homeActivityScrollLeft
+  });
+  if (Math.abs(scroller.scrollLeft - target) > 0.5) scroller.scrollLeft = target;
+  scroller.classList.toggle('is-scrolled', target > 2);
+}
+
 function setupHomeActivityScroller(scroller) {
   let drag = null;
-  const updatePosition = () => {
-    state.homeActivityScrollLeft = scroller.scrollLeft;
+  scroller.addEventListener('scroll', () => {
     scroller.classList.toggle('is-scrolled', scroller.scrollLeft > 2);
-  };
-  scroller.addEventListener('scroll', updatePosition);
+    const record = homeOverviewApi.homeActivityScrollRecord({
+      scrollLeft: scroller.scrollLeft,
+      scrollWidth: scroller.scrollWidth,
+      clientWidth: scroller.clientWidth
+    });
+    if (!record) return; // not laid out / panel hidden — don't persist a bogus position
+    state.homeActivityScrollLeft = record.scrollLeft;
+    state.homeActivityFollowEnd = record.followEnd;
+  });
   scroller.addEventListener('click', (event) => event.stopPropagation());
   scroller.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || event.pointerType === 'touch') return;
@@ -2031,15 +2048,18 @@ function setupHomeActivityScroller(scroller) {
   };
   scroller.addEventListener('pointerup', endDrag);
   scroller.addEventListener('pointercancel', endDrag);
-}
 
-function restoreHomeActivityScroll() {
-  const scroller = els.homePanel?.querySelector('.home-activity-scroll');
-  if (!scroller) return;
-  const max = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-  const target = state.homeActivityScrollLeft == null ? max : Math.min(max, state.homeActivityScrollLeft);
-  scroller.scrollLeft = target;
-  scroller.classList.toggle('is-scrolled', target > 2);
+  // Land on the newest (right) column only after the browser has actually laid the
+  // heatmap out. A single requestAnimationFrame measures before layout settles on a
+  // cold window (far more often on Windows), reads scrollWidth === clientWidth, and
+  // sticks at the oldest edge. ResizeObserver delivers post-layout and also fires once
+  // the panel becomes visible / the window resizes, so the measurement is always real.
+  state.homeActivityResizeObserver?.disconnect();
+  if (typeof ResizeObserver === 'function') {
+    state.homeActivityResizeObserver = new ResizeObserver(() => applyHomeActivityScroll(scroller));
+    state.homeActivityResizeObserver.observe(scroller);
+  }
+  applyHomeActivityScroll(scroller);
 }
 
 function renderHomeTrendsModule() {
@@ -2107,6 +2127,10 @@ function renderHomeTrendsModule() {
 
 function renderHome() {
   if (!els.homePanel) return;
+  // The previous scroller (and its ResizeObserver) is about to be replaced; drop the
+  // observer so at most one is live and it is gone if the trends module disappears.
+  state.homeActivityResizeObserver?.disconnect();
+  state.homeActivityResizeObserver = null;
   const period = state.stats.periods?.[state.period] || { totalTokens: 0, costUsd: 0, clients: {} };
   const moduleIds = homeModuleIds();
   if (moduleIds.includes('trends')) void loadHomeHistory();
@@ -2134,7 +2158,8 @@ function renderHome() {
     return renderHomeTrendsModule();
   });
   els.homePanel.replaceChildren(...nodes);
-  requestAnimationFrame(restoreHomeActivityScroll);
+  // setupHomeActivityScroller wires a ResizeObserver that applies the scroll position
+  // post-layout, so no requestAnimationFrame guess is needed here.
 }
 
 function render() {

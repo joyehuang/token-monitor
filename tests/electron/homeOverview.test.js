@@ -10,6 +10,8 @@ const {
   homeLimitAccounts,
   homeModelRows,
   homeActivityWheelRoute,
+  homeActivityScrollTarget,
+  homeActivityScrollRecord,
   homeTrendSummary
 } = require('../../src/electron/renderer/homeOverview');
 
@@ -121,4 +123,42 @@ test('homeActivityWheelRoute lets vertical wheel gestures continue to Home scrol
   assert.equal(homeActivityWheelRoute({ deltaX: 2, deltaY: 40 }), 'home-vertical');
   assert.equal(homeActivityWheelRoute({ deltaX: 40, deltaY: 2 }), 'activity-horizontal');
   assert.equal(homeActivityWheelRoute({ deltaX: 0, deltaY: 40, shiftKey: true }), 'activity-horizontal');
+});
+
+test('homeActivityScrollTarget pins to the newest (right) edge while following the end', () => {
+  // Laid out and overflowing: follow-end lands on the far right.
+  assert.equal(homeActivityScrollTarget({ scrollWidth: 700, clientWidth: 300, followEnd: true, savedLeft: null }), 400);
+  // Not laid out yet (scrollWidth === clientWidth) → max 0, target 0, but the
+  // ResizeObserver re-applies once layout settles, so this is only transient.
+  assert.equal(homeActivityScrollTarget({ scrollWidth: 300, clientWidth: 300, followEnd: true, savedLeft: null }), 0);
+});
+
+test('homeActivityScrollTarget restores and clamps a saved user position', () => {
+  assert.equal(homeActivityScrollTarget({ scrollWidth: 700, clientWidth: 300, followEnd: false, savedLeft: 180 }), 180);
+  // A saved offset wider than the current max is clamped, never overshoots.
+  assert.equal(homeActivityScrollTarget({ scrollWidth: 700, clientWidth: 300, followEnd: false, savedLeft: 999 }), 400);
+  // followEnd false with no saved offset falls back to the end.
+  assert.equal(homeActivityScrollTarget({ scrollWidth: 700, clientWidth: 300, followEnd: false, savedLeft: null }), 400);
+});
+
+test('homeActivityScrollRecord ignores measurements taken before layout settles', () => {
+  // No overflow yet (or panel hidden) → null, so a bogus 0 never overwrites state.
+  assert.equal(homeActivityScrollRecord({ scrollLeft: 0, scrollWidth: 300, clientWidth: 300 }), null);
+  assert.equal(homeActivityScrollRecord({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 }), null);
+});
+
+test('homeActivityScrollRecord captures a user scroll and whether it sits at the end', () => {
+  assert.deepEqual(homeActivityScrollRecord({ scrollLeft: 180, scrollWidth: 700, clientWidth: 300 }), {
+    scrollLeft: 180,
+    followEnd: false
+  });
+  // At (or within 2px of) the far right → keep following the newest column.
+  assert.deepEqual(homeActivityScrollRecord({ scrollLeft: 400, scrollWidth: 700, clientWidth: 300 }), {
+    scrollLeft: 400,
+    followEnd: true
+  });
+  assert.deepEqual(homeActivityScrollRecord({ scrollLeft: 399, scrollWidth: 700, clientWidth: 300 }), {
+    scrollLeft: 399,
+    followEnd: true
+  });
 });

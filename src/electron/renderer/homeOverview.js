@@ -108,12 +108,40 @@
     return deltaY > deltaX ? 'home-vertical' : 'activity-horizontal';
   }
 
+  function maxScrollLeft(scrollWidth, clientWidth) {
+    return Math.max(0, Number(scrollWidth || 0) - Number(clientWidth || 0));
+  }
+
+  // Where the activity heatmap should sit: pinned to the newest (right) edge while
+  // the user is following the end, otherwise their saved offset clamped to the
+  // current overflow. Callers re-run this from a ResizeObserver so the measurement
+  // is taken after layout settles, not from a too-early requestAnimationFrame.
+  function homeActivityScrollTarget({ scrollWidth, clientWidth, followEnd, savedLeft } = {}) {
+    const max = maxScrollLeft(scrollWidth, clientWidth);
+    if (followEnd || savedLeft == null) return max;
+    const saved = Number(savedLeft);
+    if (!Number.isFinite(saved)) return max;
+    return Math.max(0, Math.min(max, saved));
+  }
+
+  // Turn an observed scroll position into the state we persist. Returns null when
+  // the heatmap has not overflowed yet (panel hidden or layout not settled), so a
+  // bogus 0 measured too early can never overwrite a real saved/follow-end value.
+  function homeActivityScrollRecord({ scrollLeft, scrollWidth, clientWidth, endThreshold = 2 } = {}) {
+    const max = maxScrollLeft(scrollWidth, clientWidth);
+    if (max <= 0) return null;
+    const left = Math.max(0, Math.min(max, Number(scrollLeft || 0)));
+    return { scrollLeft: left, followEnd: left >= max - endThreshold };
+  }
+
   return {
     homeLimitAccounts,
     homeModelRows,
     homeTrendSummary,
     homeActivityHeatmapLayout,
     homeActivityWheelRoute,
+    homeActivityScrollTarget,
+    homeActivityScrollRecord,
     remainingPercent,
     usedPercent
   };
