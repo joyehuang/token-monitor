@@ -20,7 +20,9 @@
     cursor: { web: 'Web' },
     antigravity: { rpc: 'RPC' },
     opencode: { local: 'Local', web: 'Web' },
-    deepseek: { api: 'API' }
+    deepseek: { api: 'API' },
+    minimax: { api: 'API' },
+    grok: { web: 'Web' }
   };
 
   const CODEX_RPC_DETAIL_LABELS = {
@@ -36,7 +38,9 @@
     cursor: ['Manual login', 'Web'],
     antigravity: ['App/CLI must be open', 'RPC'],
     opencode: ['Local/Web', 'Manual login'],
-    deepseek: ['Pay-as-you-go', 'API key']
+    deepseek: ['Pay-as-you-go', 'API key'],
+    minimax: ['Subscription', 'API key'],
+    grok: ['Subscription', 'Cookie/OAuth']
   };
 
   // Capability hint -> the status label it would duplicate. When that status is
@@ -122,9 +126,11 @@
     if (status === 'disabled') return { label: 'Disabled', tone: 'muted' };
     if (status === 'noSyncedData') return { label: 'No synced data', tone: 'sync' };
     if (status === 'unauthorized') {
-      return providerName === 'deepseek'
+      return providerName === 'deepseek' || providerName === 'minimax'
         ? { label: 'Update API key', tone: 'setup' }
-        : { label: 'Sign in again', tone: 'setup' };
+        : providerName === 'grok'
+          ? { label: 'Re-login', tone: 'setup' }
+          : { label: 'Sign in again', tone: 'setup' };
     }
     if (status === 'rateLimited') return { label: 'Limited', tone: 'warn' };
     if (status === 'sourceRateLimited') return { label: 'Usage API limited', tone: 'warn' };
@@ -132,7 +138,8 @@
     if (status === 'notConfigured') {
       if (providerName === 'antigravity') return { label: 'Open app or CLI', tone: 'setup' };
       if (providerName === 'cursor') return { label: 'Sign in', tone: 'setup' };
-      if (providerName === 'deepseek') return { label: 'Add API key', tone: 'setup' };
+      if (providerName === 'deepseek' || providerName === 'minimax') return { label: 'Add API key', tone: 'setup' };
+      if (providerName === 'grok') return { label: 'Run grok login', tone: 'setup' };
       return { label: 'Not set up', tone: 'setup' };
     }
     return status ? { label: 'Error', tone: 'warn' } : null;

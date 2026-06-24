@@ -1977,6 +1977,14 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   -webkit-mask-image: url(../../../assets/icons/deepseek.svg);
   mask-image: url(../../../assets/icons/deepseek.svg);
 }
+.limit-icon-grok {
+  -webkit-mask-image: url(../../../assets/icons/xai.svg);
+  mask-image: url(../../../assets/icons/xai.svg);
+}
+.limit-icon-minimax {
+  -webkit-mask-image: url(../../../assets/icons/minimax.svg);
+  mask-image: url(../../../assets/icons/minimax.svg);
+}
 .row-label {
   display: grid;
   min-width: 0;
@@ -2232,6 +2240,11 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+/* When a provider only exposes a single window (e.g. Grok Monthly), let it
+   span the full row instead of sitting in the left half. */
+.limit-windows > .limit-window:only-child {
+  grid-column: 1 / -1;
 }
 .limit-windows-cursor {
   grid-template-columns: 1fr;

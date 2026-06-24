@@ -15,8 +15,12 @@ const opencodeWeb = require('./opencodeWeb');
 const { sharedDataDir } = require('./config');
 const { recordConsumption } = require('./deepseekBalanceHistory');
 const { codexAuthIdentity } = require('./codexAuth');
+const minimaxLimits = require('./minimaxLimits');
+const { minimaxToken, minimaxBaseUrl, parseMinimaxTiers, fetchMinimaxLimits } = minimaxLimits;
+const grokLimits = require('./grokLimits');
+const { grokCredential, readAuthJson, parseGrokBilling, fetchGrokLimits } = grokLimits;
 
-const LIMIT_PROVIDER_IDS = ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek'];
+const LIMIT_PROVIDER_IDS = ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'grok'];
 const LIMIT_REFRESH_VALUES = new Set([60_000, 120_000, 300_000, 900_000, 1_800_000]);
 const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const CLAUDE_OAUTH_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
@@ -2024,6 +2028,8 @@ async function collectLimitsOnce(options = {}, deps = {}) {
     antigravity: (providerOptions) => fetchAntigravityLimits(providerOptions, deps),
     opencode: (providerOptions) => fetchOpenCodeLimits(providerOptions, deps),
     deepseek: (providerOptions) => fetchDeepSeekLimits(providerOptions, deps),
+    minimax: (providerOptions) => minimaxLimits.fetchMinimaxLimits(providerOptions, deps),
+    grok: (providerOptions) => grokLimits.fetchGrokLimits(providerOptions, deps),
     ...(deps.providerFetchers || {})
   };
   const providers = [];
@@ -2248,6 +2254,14 @@ module.exports = {
   runCodexLogin,
   deepseekToken,
   selectFundedRow,
+  minimaxToken,
+  minimaxBaseUrl,
+  parseMinimaxTiers,
+  fetchMinimaxLimits,
+  grokCredential,
+  readAuthJson,
+  parseGrokBilling,
+  fetchGrokLimits,
   mapClaudeCliUsageToProvider,
   mapClaudeUsageToProvider,
   mapCodexRateLimitsToProvider,

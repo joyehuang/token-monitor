@@ -60,7 +60,9 @@ const LIMIT_PROVIDERS = [
   { id: 'cursor', label: 'Cursor' },
   { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },
-  { id: 'deepseek', label: 'DeepSeek' }
+  { id: 'deepseek', label: 'DeepSeek' },
+  { id: 'minimax', label: 'Minimax' },
+  { id: 'grok', label: 'Grok' }
 ];
 const DEFAULT_LIMIT_PROVIDER_ORDER = LIMIT_PROVIDERS.map((provider) => provider.id).join(',');
 const limitProviderOrderApi = window.TokenMonitorLimitProviderOrder;
@@ -156,7 +158,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, grokAccountExpanded: false, floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false, settingsInTitlebar: false };
 let preferenceDrag = null;
@@ -1230,8 +1232,13 @@ function renderProviderWindows(provider, color) {
       }
     }
   } else {
-    windows.append(limitWindowNode('Session', windowForKind(provider, 'session'), color, 0.95));
-    windows.append(limitWindowNode('Weekly', windowForKind(provider, 'weekly'), color, 0.68));
+    // Default: render only the windows the provider actually has. Providers
+    // that only expose a single window (e.g. Grok Monthly) shouldn't leave
+    // a half-empty "Weekly" bar next to the real one.
+    const session = windowForKind(provider, 'session');
+    const weekly = windowForKind(provider, 'weekly');
+    if (session) windows.append(limitWindowNode(session.label || 'Session', session, color, 0.95));
+    if (weekly) windows.append(limitWindowNode(weekly.label || 'Weekly', weekly, color, 0.68));
   }
   return windows;
 }
@@ -4731,6 +4738,117 @@ function clearDeepseekProviderStatus() {
   state.stats.limits.providers = state.stats.limits.providers.filter((provider) => provider.provider !== 'deepseek');
 }
 
+function minimaxProviderStatus() {
+  return (state.stats?.limits?.providers || []).find((provider) => provider.provider === 'minimax') || null;
+}
+
+function minimaxAccountLinked() {
+  return Boolean(state.settings?.minimaxApiKeyConfigured) && minimaxProviderStatus()?.status === 'ok';
+}
+
+// Follow the region we last successfully polled so a global (minimax.io)
+// account lands on platform.minimax.io, not the CN landing page. Fall back
+// to the CN host until we've seen a successful poll.
+function minimaxPlatformUrl() {
+  const provider = minimaxProviderStatus();
+  const region = provider && provider.region === 'en' ? 'en' : 'cn';
+  return region === 'en'
+    ? 'https://platform.minimax.io/user-center/payment/token-plan'
+    : 'https://platform.minimaxi.com/user-center/payment/token-plan';
+}
+
+function setMinimaxAccountExpanded(expanded) {
+  const details = document.getElementById('minimaxSettingsDetails');
+  const toggle = document.getElementById('minimaxSettingsToggle');
+  if (!details || !toggle) return;
+  state.minimaxAccountExpanded = expanded;
+  details.classList.toggle('hidden', !expanded);
+  toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+}
+
+function renderMinimaxStatus() {
+  const statusEl = document.getElementById('minimaxApiKeyStatus');
+  const openBtn = document.getElementById('minimaxOpenBrowser');
+  const logoutBtn = document.getElementById('minimaxLogoutButton');
+  const refreshBtn = document.getElementById('minimaxRefreshButton');
+  const manualPanel = document.getElementById('minimaxManualPanel');
+  const errorEl = document.getElementById('minimaxErrorMessage');
+  if (!statusEl || !openBtn || !logoutBtn || !refreshBtn || !manualPanel || !errorEl) return;
+
+  errorEl.classList.add('hidden');
+  errorEl.textContent = '';
+
+  const source = state.settings?.minimaxApiKeySource || '';
+  const provider = minimaxProviderStatus();
+  const linked = minimaxAccountLinked();
+  if (linked) {
+    setCursorStatusText(statusEl, source === 'env' ? t('settings.minimax.statusEnv') : t('settings.minimax.statusSet'));
+  } else if (provider?.status === 'unauthorized') {
+    setCursorStatusText(statusEl, t('settings.minimax.statusInvalid'));
+  } else if (state.settings?.minimaxApiKeyConfigured) {
+    setCursorStatusText(statusEl, t('settings.common.checking'));
+  } else {
+    setCursorStatusText(statusEl, t('settings.minimax.statusNotSet'));
+  }
+  manualPanel.classList.toggle('hidden', linked);
+  openBtn.classList.toggle('hidden', linked);
+  logoutBtn.classList.toggle('hidden', !linked || source !== 'settings');
+  refreshBtn.classList.toggle('hidden', !linked);
+  renderSettingsSummaries();
+}
+
+function grokProviderStatus() {
+  return (state.stats?.limits?.providers || []).find((provider) => provider.provider === 'grok') || null;
+}
+
+function grokAccountLinked() {
+  return Boolean(state.settings?.grokCookieConfigured) && grokProviderStatus()?.status === 'ok';
+}
+
+function setGrokAccountExpanded(expanded) {
+  const details = document.getElementById('grokSettingsDetails');
+  const toggle = document.getElementById('grokSettingsToggle');
+  if (!details || !toggle) return;
+  state.grokAccountExpanded = expanded;
+  details.classList.toggle('hidden', !expanded);
+  toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+}
+
+function renderGrokStatus() {
+  const statusEl = document.getElementById('grokCookieStatus');
+  const logoutBtn = document.getElementById('grokLogoutButton');
+  const refreshBtn = document.getElementById('grokRefreshButton');
+  const manualPanel = document.getElementById('grokManualPanel');
+  const errorEl = document.getElementById('grokErrorMessage');
+  if (!statusEl || !refreshBtn || !manualPanel || !errorEl) return;
+
+  errorEl.classList.add('hidden');
+  errorEl.textContent = '';
+
+  const source = state.settings?.grokCookieSource || '';
+  const provider = grokProviderStatus();
+  const linked = grokAccountLinked();
+  if (linked) {
+    setCursorStatusText(statusEl, source === 'env' ? t('settings.grok.statusEnv') : t('settings.grok.statusSet'));
+  } else if (provider?.status === 'unauthorized') {
+    setCursorStatusText(statusEl, t('settings.grok.statusInvalid'));
+  } else if (state.settings?.grokCookieConfigured) {
+    setCursorStatusText(statusEl, t('settings.common.checking'));
+  } else {
+    setCursorStatusText(statusEl, t('settings.grok.statusNotSet'));
+  }
+  if (logoutBtn) logoutBtn.classList.add('hidden');
+  manualPanel.classList.toggle('hidden', linked);
+  refreshBtn.classList.toggle('hidden', !linked);
+
+  const authJsonEl = document.getElementById('grokAuthJsonPath');
+  if (authJsonEl) {
+    const authPath = state.settings?.grokAuthJsonPath || '';
+    authJsonEl.textContent = authPath ? t('settings.grok.authJsonPath', { path: authPath }) : '';
+  }
+  renderSettingsSummaries();
+}
+
 function renderDeepseekStatus() {
   const statusEl = document.getElementById('deepseekApiKeyStatus');
   const openBtn = document.getElementById('deepseekOpenBrowser');
@@ -5388,6 +5506,60 @@ function setupCursorAccountUI() {
         errorEl.textContent = t('settings.deepseek.saveFailed', { message: err.message });
         errorEl.classList.remove('hidden');
       }
+    });
+  }
+const minimaxToggle = document.getElementById('minimaxSettingsToggle');
+  if (minimaxToggle) {
+    minimaxToggle.addEventListener('click', () => setMinimaxAccountExpanded(!state.minimaxAccountExpanded));
+    setMinimaxAccountExpanded(false);
+    renderMinimaxStatus();
+
+    document.getElementById('minimaxOpenBrowser').addEventListener('click', () => {
+      window.tokenMonitor.openExternal(minimaxPlatformUrl());
+    });
+
+    document.getElementById('minimaxLogoutButton').addEventListener('click', async () => {
+      await saveSettings({ minimaxApiKey: '' });
+      renderMinimaxStatus();
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('minimaxRefreshButton').addEventListener('click', async () => {
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('minimaxApiKeySubmit').addEventListener('click', async () => {
+      const input = document.getElementById('minimaxApiKeyInput');
+      const errorEl = document.getElementById('minimaxErrorMessage');
+      errorEl.classList.add('hidden');
+      if (!String(input.value || '').trim()) {
+        errorEl.textContent = t('settings.minimax.statusNotSet');
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      try {
+        await saveSettings({ minimaxApiKey: input.value });
+        input.value = '';
+        renderMinimaxStatus();
+        await refreshStats({ force: true });
+        if (minimaxAccountLinked()) setMinimaxAccountExpanded(false);
+        else setMinimaxAccountExpanded(true);
+        renderMinimaxStatus();
+      } catch (err) {
+        errorEl.textContent = t('settings.minimax.saveFailed', { message: err.message });
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
+  const grokToggle = document.getElementById('grokSettingsToggle');
+  if (grokToggle) {
+    grokToggle.addEventListener('click', () => setGrokAccountExpanded(!state.grokAccountExpanded));
+    setGrokAccountExpanded(false);
+    renderGrokStatus();
+
+    document.getElementById('grokRefreshButton').addEventListener('click', async () => {
+      await refreshStats({ force: true });
     });
   }
 }

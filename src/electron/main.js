@@ -12,7 +12,9 @@ const { startCollector, lookupModelPricing } = require('../shared/collector');
 const { customPricingPath } = require('../shared/tokscaleConfig');
 const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared/tokscaleCustomPricing');
 const { createHub } = require('../hub/server');
-const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin } = require('../shared/limitCollector');
+const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken } = require('../shared/limitCollector');
+const grokLimits = require('../shared/grokLimits');
+const { grokCredential } = grokLimits;
 const { codexAuthIdentity, hashAccountKey } = require('../shared/codexAuth');
 const {
   normalizeClientDisplayOrder,
@@ -189,6 +191,7 @@ function defaultSettings() {
     opencodeCookie: '',
     opencodeProfiles: {},
     deepseekApiKey: '',
+    minimaxApiKey: '',
     codexManagedAccounts: [],
     appUpdate: {
       lastCheckedAt: null,
@@ -212,6 +215,20 @@ function normalizeDeepSeekApiKey(value) {
 
 function currentDeepSeekApiKey() {
   return settings?.deepseekApiKey || deepseekToken(process.env);
+}
+
+function normalizeMinimaxApiKey(value) {
+  return minimaxToken({}, String(value || ''));
+}
+
+function currentMinimaxApiKey() {
+  return settings?.minimaxApiKey || minimaxToken(process.env);
+}
+
+function currentGrokCredential() {
+  // grokCredential already falls back to ~/.grok/auth.json when no env var is
+  // set, so this is a one-liner.
+  return grokCredential(process.env);
 }
 
 let codexLoginInFlight = false;
@@ -1124,6 +1141,7 @@ function startSyncCollector() {
     opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
+    minimaxApiKey: settings.minimaxApiKey || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     onUpdate: async (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1163,6 +1181,7 @@ function startHostCollector() {
     opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
+    minimaxApiKey: settings.minimaxApiKey || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     onUpdate: (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1328,6 +1347,7 @@ function startLocalCollector() {
     opencodeCookie: settings.opencodeCookie || process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '',
     opencodeProfiles: settings.opencodeProfiles || {},
     deepseekApiKey: settings.deepseekApiKey || '',
+    minimaxApiKey: settings.minimaxApiKey || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
     onUpdate: (summary, reason) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1518,9 +1538,18 @@ function settingsForRenderer() {
     : deepseekToken(process.env)
       ? 'env'
       : '';
+  const minimaxApiKeySource = settings?.minimaxApiKey
+    ? 'settings'
+    : minimaxToken(process.env)
+      ? 'env'
+      : '';
+  const grokCredential_ = currentGrokCredential();
+  const grokCookieSource = grokCredential_ ? grokCredential_.source : '';
+  const grokAuthJsonPath = grokCredential_ && grokCredential_.path ? grokCredential_.path : '';
   return {
     ...settings,
     deepseekApiKey: '',
+    minimaxApiKey: '',
     // Never ship OpenCode session cookies to the renderer; the UI only needs to
     // know whether a cookie is configured, not its value.
     opencodeCookie: settings?.opencodeCookie ? 'set' : '',
@@ -1530,6 +1559,11 @@ function settingsForRenderer() {
     codexManagedAccounts: codexAccountsForRenderer(),
     deepseekApiKeyConfigured: Boolean(currentDeepSeekApiKey()),
     deepseekApiKeySource,
+    minimaxApiKeyConfigured: Boolean(currentMinimaxApiKey()),
+    minimaxApiKeySource,
+    grokCookieConfigured: Boolean(grokCredential_),
+    grokCookieSource,
+    grokAuthJsonPath,
     currencyRatesEffective: effectiveRates || resolveEffectiveRates(rateCache?.rates || {}, settings?.currencyRates || {}),
     currencyRateInfo: rateCache ? { source: rateCache.source, date: rateCache.date, fetchedAt: rateCache.fetchedAt } : null,
     windowToggleShortcutStatus: currentWindowToggleShortcutStatus()
@@ -1910,6 +1944,8 @@ function isAllowedExternalUrl(value) {
   if ((parsed.hostname === 'cursor.com' || parsed.hostname === 'www.cursor.com') && parsed.pathname.startsWith('/settings')) return true;
   if (parsed.hostname === 'opencode.ai' || parsed.hostname === 'www.opencode.ai') return true;
   if (parsed.hostname === 'platform.deepseek.com' && parsed.pathname.startsWith('/api_keys')) return true;
+  if (parsed.hostname === 'platform.minimaxi.com') return true;
+  if (parsed.hostname === 'platform.minimax.io') return true;
   if (STATUS_PAGE_HOSTS.has(parsed.hostname) && (parsed.pathname === '' || parsed.pathname === '/')) return true;
   return false;
 }
@@ -2241,6 +2277,7 @@ app.whenReady().then(() => {
     const previousLimitsRefreshMs = settings.limitsRefreshMs;
     const previousHistoryEnabled = settings.historyEnabled;
     const previousDeepSeekApiKey = settings.deepseekApiKey;
+    const previousMinimaxApiKey = settings.minimaxApiKey;
     const previousDiscordRpcEnabled = settings.discordRpcEnabled;
     const previousShowTrayIcon = settings.showTrayIcon;
     const previousTrayMode = settings.trayMode;
@@ -2254,6 +2291,7 @@ app.whenReady().then(() => {
     delete normalizedPatch.customModelPricing;
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
     if (patch.deepseekApiKey !== undefined) normalizedPatch.deepseekApiKey = normalizeDeepSeekApiKey(patch.deepseekApiKey);
+    if (patch.minimaxApiKey !== undefined) normalizedPatch.minimaxApiKey = normalizeMinimaxApiKey(patch.minimaxApiKey);
     settings = normalizeWindowBehaviorSettings({
       ...settings,
       ...normalizedPatch,
@@ -2299,6 +2337,7 @@ app.whenReady().then(() => {
       language: patch.language !== undefined ? normalizeLanguageSetting(patch.language, settings.language) : normalizeLanguageSetting(settings.language),
       startAtLogin: loginItemEnabledHere() ? parseBoolean(patch.startAtLogin ?? settings.startAtLogin, false) : false,
       deepseekApiKey: patch.deepseekApiKey !== undefined ? normalizeDeepSeekApiKey(patch.deepseekApiKey) : (settings.deepseekApiKey || ''),
+      minimaxApiKey: patch.minimaxApiKey !== undefined ? normalizeMinimaxApiKey(patch.minimaxApiKey) : (settings.minimaxApiKey || ''),
       customModelPricing: patch.customModelPricing !== undefined
         ? normalizeCustomPricingSetting(patch.customModelPricing)
         : normalizeCustomPricingSetting(settings.customModelPricing)
@@ -2343,7 +2382,8 @@ app.whenReady().then(() => {
       settings.limitProviders !== previousLimitProviders ||
       settings.limitsRefreshMs !== previousLimitsRefreshMs ||
       settings.historyEnabled !== previousHistoryEnabled ||
-      settings.deepseekApiKey !== previousDeepSeekApiKey
+      settings.deepseekApiKey !== previousDeepSeekApiKey ||
+      settings.minimaxApiKey !== previousMinimaxApiKey
     ) {
       startMode();
     }

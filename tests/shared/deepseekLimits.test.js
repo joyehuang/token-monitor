@@ -24,7 +24,10 @@ test('deepseekToken reads DEEPSEEK_API_KEY then DEEPSEEK_KEY, stripping quotes',
 });
 
 test('parseLimitProviders includes DeepSeek in the default provider set', () => {
-  assert.deepEqual(parseLimitProviders(), ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek']);
+  assert.deepEqual(
+    parseLimitProviders(),
+    ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'grok']
+  );
 });
 
 test('selectFundedRow prefers the largest funded row, tie -> USD', () => {

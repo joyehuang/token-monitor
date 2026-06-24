@@ -1,7 +1,7 @@
 'use strict';
 
 const DEFAULT_LIMITS_REFRESH_MS = 5 * 60 * 1000;
-const VALID_PROVIDERS = new Set(['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek']);
+const VALID_PROVIDERS = new Set(['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'grok']);
 const VALID_STATUSES = new Set(['ok', 'disabled', 'notConfigured', 'unauthorized', 'rateLimited', 'sourceRateLimited', 'unavailable', 'error']);
 const VALID_SOURCES = new Set(['oauth', 'cli', 'web', 'rpc', 'local', 'api']);
 const VALID_SOURCE_DETAILS = new Set(['app', 'cli', 'managed', 'unknown']);
@@ -129,6 +129,13 @@ function normalizeProviderBalance(input) {
   };
 }
 
+function normalizeRegion(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (raw === 'cn' || raw === 'en' || raw === 'global') return raw;
+  return raw.length <= 16 ? raw : '';
+}
+
 function normalizeLimitProvider(input) {
   if (!input || typeof input !== 'object') return null;
   const provider = normalizeProviderId(input.provider);
@@ -148,7 +155,8 @@ function normalizeLimitProvider(input) {
     updatedAt: normalizeIsoTimestamp(input.updatedAt) || normalizeIsoTimestamp(input.checkedAt),
     windows,
     balanceUsd: numberOrNull(input.balanceUsd),
-    balance: normalizeProviderBalance(input.balance)
+    balance: normalizeProviderBalance(input.balance),
+    region: normalizeRegion(input.region)
   };
 }
 
