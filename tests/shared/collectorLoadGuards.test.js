@@ -165,6 +165,88 @@ test('watchPathsForClients watches Pi (incl. Oh My Pi), Zed (incl. native macOS)
   }
 });
 
+test('watchPathsForClients watches the Hermes home dir so new state.db sidecars are picked up', () => {
+  // Hermes keeps usage in a single SQLite db at the root of HERMES_HOME, but that
+  // dir also holds the Desktop App runtime (hermes-agent/node_modules/venv: GBs /
+  // 150k+ files). We watch the dir (not the db files directly) so a state.db-wal
+  // created after startup is still seen; the recursive poll that pegged CPU at
+  // 100%+ (issue #38) is avoided by the watchIgnoreMatcher pruning below.
+  const tmp = withTmpHome([path.join('.hermes', 'hermes-agent', 'node_modules')]);
+  fs.writeFileSync(path.join(tmp, '.hermes', 'state.db'), '');
+  const originalHomedir = os.homedir;
+  const previousHermesHome = process.env.HERMES_HOME;
+  os.homedir = () => tmp;
+  try {
+    delete process.env.HERMES_HOME;
+    const { clientDataDirPresence, watchPathsForClients } = freshCollector();
+    const dirs = watchPathsForClients('hermes');
+    assert.deepEqual(dirs, [path.join(tmp, '.hermes')]);
+    assert.deepEqual(clientDataDirPresence('hermes'), { hermes: true });
+  } finally {
+    os.homedir = originalHomedir;
+    if (previousHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = previousHermesHome;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('watchIgnoreMatcher prunes the Hermes runtime but keeps the state.db family and the watch root', () => {
+  const tmp = withTmpHome([path.join('.hermes', 'hermes-agent', 'node_modules')]);
+  const originalHomedir = os.homedir;
+  const previousHermesHome = process.env.HERMES_HOME;
+  os.homedir = () => tmp;
+  try {
+    delete process.env.HERMES_HOME;
+    const { watchIgnoreMatcher } = freshCollector();
+    const ignored = watchIgnoreMatcher('claude,hermes');
+    const hermes = path.join(tmp, '.hermes');
+    // The watch root itself and the db family are kept.
+    assert.equal(ignored(hermes), false);
+    assert.equal(ignored(path.join(hermes, 'state.db')), false);
+    assert.equal(ignored(path.join(hermes, 'state.db-wal')), false);
+    assert.equal(ignored(path.join(hermes, 'state.db-shm')), false);
+    // The runtime / logs / cache under ~/.hermes are pruned (never recursed).
+    assert.equal(ignored(path.join(hermes, 'hermes-agent')), true);
+    assert.equal(ignored(path.join(hermes, 'hermes-agent', 'node_modules')), true);
+    assert.equal(ignored(path.join(hermes, 'logs')), true);
+    assert.equal(ignored(path.join(hermes, 'cache', 'blob')), true);
+    // Other clients' paths are never touched by the matcher.
+    assert.equal(ignored(path.join(tmp, '.claude', 'projects', 'p', 'a.jsonl')), false);
+  } finally {
+    os.homedir = originalHomedir;
+    if (previousHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = previousHermesHome;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('watchIgnoreMatcher honors HERMES_HOME and is absent when Hermes is not tracked', () => {
+  const tmp = withTmpHome([]);
+  const hermesHome = path.join(tmp, 'custom-hermes');
+  fs.mkdirSync(path.join(hermesHome, 'logs'), { recursive: true });
+  const originalHomedir = os.homedir;
+  const previousHermesHome = process.env.HERMES_HOME;
+  os.homedir = () => tmp;
+  try {
+    process.env.HERMES_HOME = hermesHome;
+    const { watchPathsForClients, watchIgnoreMatcher } = freshCollector();
+    assert.deepEqual(watchPathsForClients('hermes'), [hermesHome]);
+    const ignored = watchIgnoreMatcher('hermes');
+    assert.equal(ignored(path.join(hermesHome, 'state.db-wal')), false);
+    assert.equal(ignored(path.join(hermesHome, 'logs')), true);
+    // No Hermes tracked, no matcher, so other watchers run unchanged.
+    assert.equal(watchIgnoreMatcher('claude,codex'), undefined);
+  } finally {
+    os.homedir = originalHomedir;
+    if (previousHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = previousHermesHome;
+    delete require.cache[collectorPath];
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('collectUsageOnce skips antigravity sync when no antigravity data root exists', async () => {
   const tmp = withTmpHome([]);
   const childProcess = require('node:child_process');

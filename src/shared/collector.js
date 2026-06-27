@@ -569,6 +569,30 @@ function watchPathsForClients(clientsCsv) {
   return candidates.filter(dirExists);
 }
 
+// Inside a Hermes home dir tokscale only reads the SQLite db; the rest is the
+// Desktop App runtime (hermes-agent/node_modules/venv, logs, cache — 150k+ files
+// for some users). A plain recursive watch of ~/.hermes pegged CPU at 100%+
+// (issue #38). Watching the db files directly instead would miss the WAL/SHM
+// sidecars Hermes creates after startup (no seconds-level refresh on a cold
+// start), so we keep watching the dir but hand chokidar an `ignored` matcher
+// that prunes everything under a Hermes home except the db family. chokidar
+// never recurses into an ignored dir (so the runaway poll is gone), yet a
+// newly created state.db-wal is still seen on the next top-level readdir.
+const HERMES_DB_FILES = new Set(['state.db', 'state.db-wal', 'state.db-shm']);
+
+function watchIgnoreMatcher(clientsCsv) {
+  const roots = (clientWatchCandidates(clientsCsv).hermes || []).map((dir) => path.resolve(dir));
+  if (roots.length === 0) return undefined;
+  return (target) => {
+    const resolved = path.resolve(target);
+    for (const root of roots) {
+      if (resolved === root) return false; // the watch root itself must stay watched
+      if (resolved.startsWith(root + path.sep)) return !HERMES_DB_FILES.has(path.basename(resolved));
+    }
+    return false; // non-Hermes paths are never ignored
+  };
+}
+
 // Whether each tracked client has at least one data directory on disk.
 function clientDataDirPresence(clientsCsv) {
   const presence = {};
@@ -829,12 +853,14 @@ function startCollector(options) {
       return;
     }
     try {
+      const ignored = watchIgnoreMatcher(clients);
       const watcher = chokidar.watch(dirs, {
         ignoreInitial: true,
         persistent: true,
         usePolling: true,
         interval: 2000,
         binaryInterval: 5000,
+        ...(ignored ? { ignored } : {}),
         awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 }
       });
       watcher.on('all', (event, filePath) => scheduleTick(`watch:${event}:${path.basename(filePath || '')}`));
@@ -896,5 +922,6 @@ module.exports = {
   shouldIncludeHistory,
   startCollector,
   tokscaleCommand,
+  watchIgnoreMatcher,
   watchPathsForClients
 };
