@@ -7,8 +7,11 @@ const test = require('node:test');
 
 const {
   homeActivityHeatmapLayout,
+  homeDeviceRows,
   homeLimitAccounts,
+  homeLimitAccountsForProviders,
   homeModelRows,
+  homeToolRows,
   homeActivityWheelRoute,
   homeActivityScrollTarget,
   homeActivityScrollRecord,
@@ -46,6 +49,30 @@ test('Home activity heatmap is a scaled copy of the dashboard heatmap', () => {
   }
   assert.doesNotMatch(rule(css, '.home-activity-scroll'), /padding-block/);
   assert.match(rule(css, '.home-activity-canvas .heat-month'), /fill:\s*rgba\(var\(--line-rgb\), 0\.5\)/);
+});
+
+test('Home module selection is independent from main view preferences', () => {
+  const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
+  const match = rendererSource.match(/function homeModuleIds\(\) \{([\s\S]*?)\n\}/);
+  assert.ok(match, 'homeModuleIds exists');
+  assert.doesNotMatch(match[1], /hiddenViewSet|effectiveViewDisplayOrderValue|VIEW_DISPLAY_OPTIONS/);
+  assert.match(match[1], /hiddenHomeModuleSet|orderedHomeModules|HOME_MODULE_OPTIONS/);
+  assert.match(rendererSource, /function renderHomeToolModule/);
+  assert.match(rendererSource, /function renderHomeDeviceModule/);
+});
+
+test('Home device rows keep only the local badge and mute stale devices without status text', () => {
+  const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
+  const match = rendererSource.match(/function renderHomeDeviceModule\(\) \{([\s\S]*?)\n\}\n\nfunction dailyWithHeatIntensity/);
+  assert.ok(match, 'renderHomeDeviceModule exists');
+  assert.match(match[1], /home-device-badge/);
+  assert.match(match[1], /badge\.textContent = 'you'/);
+  assert.match(match[1], /if \(row\.isLocal\)/);
+  assert.match(match[1], /item\.classList\.add\('is-stale'\)/);
+  assert.match(match[1], /item\.append\(mark, label, value\)/);
+  assert.doesNotMatch(match[1], /home-list-aux/);
+  assert.doesNotMatch(match[1], /t\('home\.localDevice'\)/);
+  assert.doesNotMatch(match[1], /badge\.textContent = row\.isLocal \? t\('home\.localDevice'\) : t\('home\.staleDevice'\)/);
 });
 
 test('homeLimitAccounts keeps account windows together and sorts lowest remaining first', () => {
@@ -99,6 +126,39 @@ test('homeLimitAccounts keeps a real billing remaining percentage fallback', () 
   ]);
 });
 
+test('homeLimitAccountsForProviders includes Grok billing and DeepSeek balance rows', () => {
+  const rows = homeLimitAccountsForProviders({
+    providers: [
+      {
+        provider: 'grok',
+        windows: [
+          { kind: 'billing', label: 'Monthly', remainingPercent: 100, resetDescription: '2d 15h' }
+        ]
+      },
+      {
+        provider: 'deepseek',
+        balance: { amount: 4.61, monthSpend: 0, currency: 'CNY' },
+        windows: []
+      }
+    ],
+    providerOptions: [
+      { id: 'grok', label: 'Grok' },
+      { id: 'deepseek', label: 'DeepSeek' }
+    ],
+    enabledProviderIds: ['grok', 'deepseek'],
+    colors: { grok: '#9aa0aa', deepseek: '#4d72ff' },
+    limit: 5
+  });
+
+  assert.deepEqual(rows.map((row) => row.providerId), ['grok', 'deepseek']);
+  assert.deepEqual(rows[0].windows.map((window) => [window.kind, window.label, window.remainingPercent]), [
+    ['billing', 'Monthly', 100]
+  ]);
+  assert.deepEqual(rows[1].windows.map((window) => [window.kind, window.label, window.remainingPercent, window.amount, window.currency, window.value]), [
+    ['balance', 'balance', 100, 4.61, 'CNY', '']
+  ]);
+});
+
 test('homeModelRows returns one-line token shares without cost fields', () => {
   const rows = homeModelRows([
     { name: 'claude-opus-4-8', value: 34_000_000, cost: 21.96, color: '#cc7c5e' },
@@ -110,6 +170,74 @@ test('homeModelRows returns one-line token shares without cost fields', () => {
     { key: 'gpt-5.5', name: 'gpt-5.5', value: 29_800_000, share: 29_800_000 / 63_800_000, color: '#49a3b0' }
   ]);
   assert.equal(Object.hasOwn(rows[0], 'cost'), false);
+});
+
+test('homeToolRows returns top current-period tools with shares', () => {
+  const rows = homeToolRows([
+    { key: 'codex', name: 'Codex', value: 120, color: '#49a3b0' },
+    { key: 'claude', name: 'Claude Code', value: 300, color: '#cc7c5e' },
+    { key: 'opencode', name: 'OpenCode', value: 0, color: '#9aa0aa' }
+  ], 420, 2);
+
+  assert.deepEqual(rows.map((row) => [row.key, row.value, row.share]), [
+    ['claude', 300, 300 / 420],
+    ['codex', 120, 120 / 420]
+  ]);
+});
+
+test('homeDeviceRows uses display names, skips empty devices, and prefers local/fresh rows', () => {
+  const rows = homeDeviceRows([
+    { deviceId: 'remote-stale', hostname: 'Old PC', stale: true, periods: { today: { totalTokens: 900 } } },
+    { deviceId: 'empty', displayName: 'Empty Device', stale: false, periods: { today: { totalTokens: 0 } } },
+    { deviceId: 'local', displayName: 'macbook-m5', hostname: 'Javiss-MacBook-Air.local', stale: false, periods: { today: { totalTokens: 100 } } },
+    { deviceId: 'remote-fresh', displayName: 'studio', hostname: 'Studio.local', stale: false, periods: { today: { totalTokens: 500 } } }
+  ], { localDeviceId: 'local', period: 'today', limit: 3 });
+
+  assert.deepEqual(rows.map((row) => [row.key, row.name, row.value, row.isLocal, row.isStale]), [
+    ['local', 'macbook-m5', 100, true, false],
+    ['remote-fresh', 'studio', 500, false, false],
+    ['remote-stale', 'remote-stale', 900, false, true]
+  ]);
+});
+
+test('homeLimitAccountsForProviders keeps provider order and filters hidden providers', () => {
+  const rows = homeLimitAccountsForProviders({
+    providers: [
+      { provider: 'codex', windows: [{ kind: 'session', usedPercent: 40 }] },
+      { provider: 'opencode', windows: [{ kind: 'session', usedPercent: 90 }] }
+    ],
+    providerOptions: [
+      { id: 'opencode', label: 'OpenCode' },
+      { id: 'codex', label: 'Codex' }
+    ],
+    enabledProviderIds: ['opencode', 'codex'],
+    hiddenProviderIds: ['opencode'],
+    colors: { codex: '#49a3b0', opencode: '#9aa0aa' },
+    limit: 5
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].providerId, 'codex');
+  assert.equal(rows[0].name, 'Codex');
+});
+
+test('homeLimitAccountsForProviders can preserve configured provider order over remaining quota', () => {
+  const rows = homeLimitAccountsForProviders({
+    providers: [
+      { provider: 'grok', windows: [{ kind: 'billing', label: 'Monthly', remainingPercent: 100 }] },
+      { provider: 'claude', windows: [{ kind: 'weekly', remainingPercent: 50 }] }
+    ],
+    providerOptions: [
+      { id: 'grok', label: 'Grok' },
+      { id: 'claude', label: 'Claude' }
+    ],
+    enabledProviderIds: ['grok', 'claude'],
+    colors: { grok: '#9aa0aa', claude: '#cc7c5e' },
+    limit: 3,
+    sort: 'configured'
+  });
+
+  assert.deepEqual(rows.map((row) => row.providerId), ['grok', 'claude']);
 });
 
 test('homeTrendSummary returns the peak value and real date anchors', () => {

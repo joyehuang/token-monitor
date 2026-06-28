@@ -52,6 +52,17 @@ test('main default settings use the default view display preferences', () => {
   assert.match(mainSource, /hiddenViews:\s*defaultViewDisplayPreferences\(\)\.hiddenViews/);
 });
 
+test('main default settings include independent Home module preferences', () => {
+  const mainSource = fs.readFileSync(path.join(__dirname, '../../src/electron/main.js'), 'utf8');
+  assert.match(mainSource, /defaultHomeModulePreferences/);
+  assert.match(mainSource, /homeModuleOrder:\s*defaultHomeModulePreferences\(\)\.homeModuleOrder/);
+  assert.match(mainSource, /hiddenHomeModules:\s*defaultHomeModulePreferences\(\)\.hiddenHomeModules/);
+  assert.match(mainSource, /homeLimitProviderOrder:\s*''/);
+  assert.match(mainSource, /function migrateHomeLimitProviderOrder/);
+  assert.match(mainSource, /homeLimitProviderOrder:\s*patch\.homeLimitProviderOrder !== undefined \? migrateHomeLimitProviderOrder\(patch\.homeLimitProviderOrder\) : \(settings\.homeLimitProviderOrder \|\| ''\)/);
+  assert.match(mainSource, /hiddenHomeLimitProviders:\s*''/);
+});
+
 test('main and renderer keep their view display options in sync', () => {
   const mainSource = fs.readFileSync(path.join(__dirname, '../../src/electron/main.js'), 'utf8');
   const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');

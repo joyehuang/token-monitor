@@ -77,6 +77,7 @@ const customPricingFormApi = window.TokenMonitorCustomPricingForm;
 const viewDisplayPreferencesApi = window.TokenMonitorViewDisplayPreferences;
 const preferenceDragSortApi = window.TokenMonitorPreferenceDragSort;
 const homeOverviewApi = window.TokenMonitorHomeOverview;
+const homeModulePreferencesApi = window.TokenMonitorHomeModulePreferences;
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
 const sessionRowsApi = window.TokenMonitorSessionRows;
@@ -136,7 +137,13 @@ const VIEW_DISPLAY_OPTIONS = [
 ];
 const viewPeriodValues = new Set(['today', 'month', 'allTime']);
 const viewBreakdownValues = new Set(['home', ...baseBreakdownOrder, 'status', 'limits', 'trends']);
-const HOME_MODULE_VIEW_IDS = new Set(['limits', 'model', 'trends']);
+const HOME_MODULE_OPTIONS = [
+  { id: 'limits', labelKey: 'home.limits', viewId: 'limits' },
+  { id: 'tool', labelKey: 'home.tools', viewId: 'tool' },
+  { id: 'device', labelKey: 'home.devices', viewId: 'device' },
+  { id: 'model', labelKey: 'home.models', viewId: 'model' },
+  { id: 'trends', labelKey: 'home.activity', viewId: 'trends' }
+];
 const VIEW_SWITCHER_LONG_PRESS_MS = 420;
 const VIEW_SWITCHER_HOVER_CLOSE_MS = 160;
 const VIEW_ICON_CLASSES = {
@@ -168,7 +175,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: false, settingsInTitlebar: false };
 let preferenceDrag = null;
@@ -1053,6 +1060,13 @@ function formatLimitWindowValue(window, fillPercent, hasPercent) {
   return '';
 }
 
+function formatHomeLimitWindowValue(window) {
+  if (window?.kind === 'balance') {
+    return `${formatMoney(window.amount, window.currency)} left`;
+  }
+  return `${formatPercent(window.remainingPercent)} left`;
+}
+
 function balanceRemainingWindow(balance) {
   const amount = Math.max(0, Number(balance?.amount || 0));
   const spend = Math.max(0, Number(balance?.monthSpend || 0));
@@ -1764,12 +1778,11 @@ async function loadHomeHistory() {
 }
 
 function homeModuleIds() {
-  const hidden = hiddenViewSet();
-  const available = new Set(availableBreakdownIds());
-  return viewDisplayPreferencesApi
-    .orderedViews(VIEW_DISPLAY_OPTIONS, effectiveViewDisplayOrderValue())
-    .map((view) => view.id)
-    .filter((id) => HOME_MODULE_VIEW_IDS.has(id) && !hidden.has(id) && available.has(id));
+  const hidden = hiddenHomeModuleSet();
+  return homeModulePreferencesApi
+    .orderedHomeModules(HOME_MODULE_OPTIONS, state.settings?.homeModuleOrder)
+    .map((module) => module.id)
+    .filter((id) => !hidden.has(id));
 }
 
 function nextBreakdown(value) {
@@ -1969,23 +1982,23 @@ function homeModuleShell(kind, title, viewId, meta = '') {
 
 function homeLimitRows() {
   const enabled = enabledLimitProviderSet();
-  const providers = providersByLimitProviderId(state.stats?.limits?.providers || []);
-  const accounts = [];
-  for (const { id, label } of limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, state.settings?.limitProviderOrder)) {
-    if (!enabled.has(id)) continue;
-    const color = clientColors[id] || clientColors.default;
-    const providerEntries = providers.get(id) || [];
-    providerEntries.forEach((provider, index) => {
-      accounts.push({
-        key: `${id}:${index}`,
-        providerId: id,
-        name: id === 'codex' && providerEntries.length > 1 ? codexAccountTitle(provider, index) : label,
-        color,
-        windows: provider.windows || []
-      });
-    });
-  }
-  return homeOverviewApi.homeLimitAccounts(accounts, 3);
+  const providerOrder = state.settings?.homeLimitProviderOrder || state.settings?.limitProviderOrder;
+  const providerOptions = limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, providerOrder);
+  const hasConfiguredOrder = Boolean(state.settings?.homeLimitProviderOrder);
+  return homeOverviewApi.homeLimitAccountsForProviders({
+    providers: state.stats?.limits?.providers || [],
+    providerOptions,
+    enabledProviderIds: Array.from(enabled),
+    hiddenProviderIds: Array.from(hiddenHomeLimitProviderSet()),
+    colors: clientColors,
+    limit: 3,
+    sort: hasConfiguredOrder ? 'configured' : 'remaining',
+    accountName: (provider, index, providerEntries) => {
+      const id = String(provider?.provider || '').trim().toLowerCase();
+      const option = providerOptions.find((entry) => entry.id === id);
+      return id === 'codex' && providerEntries.length > 1 ? codexAccountTitle(provider, index) : option?.label || id;
+    }
+  });
 }
 
 function homeLimitWindowLabel(window) {
@@ -1999,7 +2012,9 @@ function homeLimitWindowLabel(window) {
     billing: 'home.limit.billing',
     monthly: 'home.limit.monthly'
   }[window.kind];
-  return key ? t(key) : window.label;
+  if (key) return t(key);
+  if (window?.kind === 'balance') return 'Balance';
+  return window.label;
 }
 
 function renderHomeLimitModule() {
@@ -2035,7 +2050,7 @@ function renderHomeLimitModule() {
       label.textContent = homeLimitWindowLabel(window);
       const value = document.createElement('span');
       value.className = 'home-list-value';
-      value.textContent = `${formatPercent(window.remainingPercent)} left`;
+      value.textContent = window.value || formatHomeLimitWindowValue(window);
       line.append(label, value);
       const resetAt = formatReset(window.resetsAt);
       const resetText = document.createElement('span');
@@ -2077,6 +2092,89 @@ function renderHomeModelModule(period) {
     share.className = 'home-list-aux';
     share.textContent = formatPercent(row.share * 100);
     item.append(mark, name, value, share);
+    body.append(item);
+  }
+  return module;
+}
+
+function homeToolSourceRows(period) {
+  return Object.entries(period?.clients || {}).map(([client, value]) => ({
+    key: client,
+    name: clientLabels[client] || client,
+    value: Number(value || 0),
+    color: clientColors[client] || clientColors.default
+  }));
+}
+
+function renderHomeToolModule(period) {
+  const { module, body } = homeModuleShell('tool', t('home.tools'), 'tool');
+  const rows = homeOverviewApi.homeToolRows(homeToolSourceRows(period), period?.totalTokens, 5);
+  if (rows.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'home-module-empty';
+    empty.textContent = t('home.noTools');
+    body.append(empty);
+    return module;
+  }
+  for (const row of rows) {
+    const item = document.createElement('div');
+    item.className = 'home-list-row home-tool-row';
+    const mark = document.createElement('span');
+    applyHomeListMark(mark, iconKindFor({ key: row.key }, 'tool'), row.color);
+    const name = document.createElement('span');
+    name.className = 'home-list-name';
+    name.textContent = row.name;
+    const value = document.createElement('span');
+    value.className = 'home-list-value';
+    value.textContent = formatCompact(row.value);
+    const share = document.createElement('span');
+    share.className = 'home-list-aux';
+    share.textContent = formatPercent(row.share * 100);
+    item.append(mark, name, value, share);
+    body.append(item);
+  }
+  return module;
+}
+
+function renderHomeDeviceModule() {
+  const { module, body } = homeModuleShell('device', t('home.devices'), 'device');
+  const rows = homeOverviewApi.homeDeviceRows(state.stats?.devices || [], {
+    localDeviceId: state.settings?.deviceId || '',
+    period: state.period,
+    limit: 4
+  });
+  if (rows.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'home-module-empty';
+    empty.textContent = t('home.noDevices');
+    body.append(empty);
+    return module;
+  }
+  for (const row of rows) {
+    const item = document.createElement('div');
+    item.className = 'home-list-row home-device-row';
+    if (row.isStale) {
+      item.classList.add('is-stale');
+      item.title = t('home.staleDevice');
+    }
+    const mark = document.createElement('span');
+    applyHomeListMark(mark, iconKindFor({ platform: row.platform }, 'device'), row.isStale ? deviceStaleColor : deviceAccent);
+    const label = document.createElement('span');
+    label.className = 'home-list-name home-device-label';
+    const name = document.createElement('span');
+    name.className = 'home-device-name';
+    name.textContent = row.name;
+    label.append(name);
+    if (row.isLocal) {
+      const badge = document.createElement('span');
+      badge.className = 'home-device-badge';
+      badge.textContent = 'you';
+      label.append(badge);
+    }
+    const value = document.createElement('span');
+    value.className = 'home-list-value';
+    value.textContent = formatCompact(row.value);
+    item.append(mark, label, value);
     body.append(item);
   }
   return module;
@@ -2245,6 +2343,8 @@ function renderHome() {
   }
   const nodes = moduleIds.map((id) => {
     if (id === 'limits') return renderHomeLimitModule();
+    if (id === 'tool') return renderHomeToolModule(period);
+    if (id === 'device') return renderHomeDeviceModule();
     if (id === 'model') return renderHomeModelModule(period);
     return renderHomeTrendsModule();
   });
@@ -3302,6 +3402,19 @@ function hiddenViewSet() {
   return new Set(viewDisplayPreferencesApi.normalizeHiddenViews(state.settings?.hiddenViews, VIEW_DISPLAY_OPTIONS).split(',').filter(Boolean));
 }
 
+function hiddenHomeModuleSet() {
+  return new Set(homeModulePreferencesApi.normalizeHiddenHomeModules(state.settings?.hiddenHomeModules, HOME_MODULE_OPTIONS).split(',').filter(Boolean));
+}
+
+function hiddenHomeLimitProviderSet() {
+  const hidden = limitProviderOrderApi.normalizeLimitProviderSelection(state.settings?.hiddenHomeLimitProviders || '', LIMIT_PROVIDERS);
+  return new Set(hidden);
+}
+
+function homeLimitProviderOrderValue() {
+  return state.settings?.homeLimitProviderOrder || state.settings?.limitProviderOrder;
+}
+
 function viewLabel(view) {
   return t(view.labelKey || `views.${view.id}`);
 }
@@ -3343,6 +3456,8 @@ function preferenceListForKind(kind) {
   if (kind === 'client') return els.clientDisplayList;
   if (kind === 'view') return els.viewDisplayList;
   if (kind === 'statusProvider') return document.getElementById('serviceProviderList');
+  if (kind === 'homeModule') return document.getElementById('homeSettingsList');
+  if (kind === 'homeLimitProvider') return document.getElementById('homeLimitProviderList');
   return els.limitProviderCheckboxes;
 }
 
@@ -3350,6 +3465,8 @@ function preferenceItemAttribute(kind) {
   if (kind === 'client') return 'client';
   if (kind === 'view') return 'view';
   if (kind === 'statusProvider') return 'statusProvider';
+  if (kind === 'homeModule') return 'homeModule';
+  if (kind === 'homeLimitProvider') return 'homeLimitProvider';
   return 'provider';
 }
 
@@ -3361,7 +3478,11 @@ function preferenceRows(kind) {
       ? '.view-preference-row[data-view]'
       : kind === 'statusProvider'
         ? '.status-provider-row[data-status-provider]'
-        : '.limit-provider-row[data-provider]';
+        : kind === 'homeModule'
+          ? '.home-module-preference-row[data-home-module]'
+          : kind === 'homeLimitProvider'
+            ? '.home-limit-provider-row[data-home-limit-provider]'
+            : '.limit-provider-row[data-provider]';
   return Array.from(list?.querySelectorAll(selector) || []);
 }
 
@@ -3413,7 +3534,7 @@ function startPreferenceDrag(event, kind, id) {
   const order = preferenceOrder(kind);
   preferenceDrag = { kind, id, pointerId: event.pointerId, originalOrder: order, order, changed: false, handle: event.currentTarget };
   event.currentTarget.setPointerCapture?.(event.pointerId);
-  event.currentTarget.closest('[data-client], [data-provider], [data-view], [data-status-provider]')?.classList.add('is-dragging');
+  event.currentTarget.closest('[data-client], [data-provider], [data-view], [data-status-provider], [data-home-module], [data-home-limit-provider]')?.classList.add('is-dragging');
   setPreferencePointerListeners(true);
   applyPreferenceLiveOrder(kind, event.clientY);
 }
@@ -3461,13 +3582,18 @@ function createPreferenceOrderHandle({ kind, id, label, count }) {
   handle.type = 'button';
   handle.className = 'preference-order-handle';
   handle.dataset.preferenceOrderHandle = kind;
-  handle.title = t(kind === 'client'
+  const titleKey = kind === 'client'
     ? 'settings.tools.reorderClient'
     : kind === 'view'
       ? 'settings.views.reorderView'
       : kind === 'statusProvider'
         ? 'serviceStatus.reorderProvider'
-        : 'settings.limits.reorderProvider', { name: label });
+        : kind === 'homeModule'
+          ? 'settings.home.reorderModule'
+          : kind === 'homeLimitProvider'
+            ? 'settings.home.reorderProvider'
+            : 'settings.limits.reorderProvider';
+  handle.title = t(titleKey, { name: label });
   handle.setAttribute('aria-label', handle.title);
   handle.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End');
   handle.disabled = count <= 1;
@@ -3611,14 +3737,167 @@ function renderViewPreferences() {
   }
 }
 
+function renderHomeLimitProviderList() {
+  const wrap = document.createElement('div');
+  wrap.id = 'homeLimitProviderList';
+  wrap.className = 'home-limit-provider-list';
+  const hidden = hiddenHomeLimitProviderSet();
+  const enabled = enabledLimitProviderSet();
+  const providers = limitProviderOrderApi
+    .orderedLimitProviders(LIMIT_PROVIDERS, homeLimitProviderOrderValue())
+    .filter(({ id }) => enabled.has(id));
+  const hasCustomOrder = Boolean(state.settings?.homeLimitProviderOrder);
+  const header = document.createElement('div');
+  header.className = 'settings-note-row home-limit-provider-header';
+  const note = document.createElement('p');
+  note.className = 'settings-note';
+  note.textContent = t('settings.home.limitProvidersNote');
+  const headerActions = document.createElement('div');
+  headerActions.className = 'tool-header-actions';
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'tool-header-action';
+  reset.textContent = '↺';
+  reset.title = t('settings.views.resetOrder');
+  reset.setAttribute('aria-label', reset.title);
+  reset.disabled = !hasCustomOrder;
+  reset.addEventListener('click', () => void resetHomeLimitProviderOrder());
+  const showAll = document.createElement('button');
+  showAll.type = 'button';
+  showAll.className = 'tool-header-action';
+  const showAllEye = document.createElement('span');
+  showAllEye.className = 'tool-header-eye';
+  showAllEye.setAttribute('aria-hidden', 'true');
+  showAll.append(showAllEye);
+  showAll.title = t('settings.views.showAll');
+  showAll.setAttribute('aria-label', showAll.title);
+  showAll.disabled = providers.every(({ id }) => !hidden.has(id));
+  showAll.addEventListener('click', () => void showAllHomeLimitProviders());
+  headerActions.append(reset, showAll);
+  header.append(note, headerActions);
+  wrap.append(header);
+  for (const { id, label, settingsLabel } of providers) {
+    const isHidden = hidden.has(id);
+    const row = document.createElement('div');
+    row.className = 'home-limit-provider-row';
+    row.dataset.homeLimitProvider = id;
+    row.classList.toggle('is-hidden', isHidden);
+    const labelGroup = document.createElement('div');
+    labelGroup.className = 'tool-preference-label';
+    const name = document.createElement('div');
+    name.className = 'tool-preference-name';
+    name.textContent = settingsLabel || label;
+    labelGroup.append(name);
+    const visibility = document.createElement('button');
+    visibility.type = 'button';
+    visibility.className = `tool-visibility-button${isHidden ? ' is-hidden' : ''}`;
+    visibility.title = t(isHidden ? 'settings.home.showProvider' : 'settings.home.hideProvider', { name: settingsLabel || label });
+    visibility.setAttribute('aria-label', visibility.title);
+    visibility.setAttribute('aria-pressed', String(!isHidden));
+    visibility.append(visibilityIcon(isHidden));
+    visibility.addEventListener('click', () => onHomeLimitProviderVisibilityToggle(id));
+    const handle = createPreferenceOrderHandle({ kind: 'homeLimitProvider', id, label: settingsLabel || label, count: providers.length });
+    const actions = document.createElement('div');
+    actions.className = 'tool-preference-actions';
+    actions.append(visibility, handle);
+    row.append(labelGroup, actions);
+    wrap.append(row);
+  }
+  return wrap;
+}
+
 function renderHomeSettingsList() {
   const wrap = document.createElement('div');
   wrap.id = 'homeSettingsList';
   wrap.className = 'home-settings-list';
+  const hidden = hiddenHomeModuleSet();
+  const modules = homeModulePreferencesApi.orderedHomeModules(HOME_MODULE_OPTIONS, state.settings?.homeModuleOrder);
+  const hasCustomOrder = homeModulePreferencesApi.normalizeHomeModuleOrder(state.settings?.homeModuleOrder, HOME_MODULE_OPTIONS).join(',') !== homeModulePreferencesApi.DEFAULT_HOME_MODULE_ORDER;
+  const header = document.createElement('div');
+  header.className = 'settings-note-row home-settings-header';
   const note = document.createElement('p');
   note.className = 'settings-note home-settings-note';
   note.textContent = t('settings.views.homeSettingsNote');
-  wrap.append(note);
+  const headerActions = document.createElement('div');
+  headerActions.className = 'tool-header-actions';
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'tool-header-action';
+  reset.textContent = '↺';
+  reset.title = t('settings.views.resetOrder');
+  reset.setAttribute('aria-label', reset.title);
+  reset.disabled = !hasCustomOrder;
+  reset.addEventListener('click', () => void resetHomeModuleOrder());
+  const showAll = document.createElement('button');
+  showAll.type = 'button';
+  showAll.className = 'tool-header-action';
+  const showAllEye = document.createElement('span');
+  showAllEye.className = 'tool-header-eye';
+  showAllEye.setAttribute('aria-hidden', 'true');
+  showAll.append(showAllEye);
+  showAll.title = t('settings.views.showAll');
+  showAll.setAttribute('aria-label', showAll.title);
+  showAll.disabled = hidden.size === 0;
+  showAll.addEventListener('click', () => void showAllHomeModules());
+  headerActions.append(reset, showAll);
+  header.append(note, headerActions);
+  wrap.append(header);
+  for (const moduleOption of modules) {
+    const id = moduleOption.id;
+    const label = t(moduleOption.labelKey);
+    const isHidden = hidden.has(id);
+    const row = document.createElement('div');
+    row.className = 'home-module-preference-row';
+    row.dataset.homeModule = id;
+    row.classList.toggle('is-hidden', isHidden);
+    const name = document.createElement('div');
+    name.className = 'tool-preference-name';
+    name.textContent = label;
+    const actions = document.createElement('div');
+    actions.className = 'tool-preference-actions';
+    if (id === 'limits') {
+      const configure = document.createElement('button');
+      configure.type = 'button';
+      configure.className = `view-subgroup-toggle${state.homeLimitSettingsExpanded ? ' is-expanded' : ''}`;
+      configure.title = t('settings.home.configureLimits');
+      configure.setAttribute('aria-label', configure.title);
+      configure.setAttribute('aria-expanded', String(Boolean(state.homeLimitSettingsExpanded)));
+      const toggleIcon = document.createElement('span');
+      toggleIcon.className = 'view-subgroup-icon';
+      toggleIcon.setAttribute('aria-hidden', 'true');
+      configure.append(toggleIcon);
+      configure.addEventListener('click', () => {
+        state.homeLimitSettingsExpanded = !state.homeLimitSettingsExpanded;
+        configure.classList.toggle('is-expanded', state.homeLimitSettingsExpanded);
+        configure.setAttribute('aria-expanded', String(Boolean(state.homeLimitSettingsExpanded)));
+        const container = document.getElementById('homeLimitProviderContainer');
+        if (container) container.classList.toggle('hidden', !state.homeLimitSettingsExpanded);
+      });
+      actions.append(configure);
+    }
+    const visibility = document.createElement('button');
+    visibility.type = 'button';
+    visibility.className = `tool-visibility-button${isHidden ? ' is-hidden' : ''}`;
+    visibility.title = t(isHidden ? 'settings.home.showModule' : 'settings.home.hideModule', { name: label });
+    visibility.setAttribute('aria-label', visibility.title);
+    visibility.setAttribute('aria-pressed', String(!isHidden));
+    visibility.append(visibilityIcon(isHidden));
+    visibility.addEventListener('click', () => onHomeModuleVisibilityToggle(id));
+    const handle = createPreferenceOrderHandle({ kind: 'homeModule', id, label, count: modules.length });
+    actions.append(visibility, handle);
+    row.append(name, actions);
+    wrap.append(row);
+    if (id === 'limits') {
+      const listContainer = document.createElement('div');
+      listContainer.id = 'homeLimitProviderContainer';
+      listContainer.className = `accordion-animated-container${state.homeLimitSettingsExpanded ? '' : ' hidden'}`;
+      const inner = document.createElement('div');
+      inner.className = 'accordion-animation-inner';
+      inner.appendChild(renderHomeLimitProviderList());
+      listContainer.appendChild(inner);
+      wrap.append(listContainer);
+    }
+  }
   return wrap;
 }
 
@@ -4018,6 +4297,38 @@ async function onViewDisplayReorder(viewId, targetIndex) {
   await saveSettings({ viewDisplayOrder: next });
 }
 
+async function onHomeModuleVisibilityToggle(moduleId) {
+  const hidden = hiddenHomeModuleSet();
+  if (hidden.has(moduleId)) hidden.delete(moduleId);
+  else hidden.add(moduleId);
+  await saveSettings({ hiddenHomeModules: Array.from(hidden).join(',') });
+  renderHomeIfVisible();
+}
+
+async function onHomeModuleMove(moduleId, direction) {
+  const next = homeModulePreferencesApi.moveHomeModuleOrder(state.settings?.homeModuleOrder, HOME_MODULE_OPTIONS, moduleId, direction);
+  await saveSettings({ homeModuleOrder: next });
+  renderHomeIfVisible();
+}
+
+async function onHomeModuleReorder(moduleId, targetIndex) {
+  const current = homeModulePreferencesApi.normalizeHomeModuleOrder(state.settings?.homeModuleOrder, HOME_MODULE_OPTIONS).join(',');
+  const next = homeModulePreferencesApi.reorderHomeModuleOrder(state.settings?.homeModuleOrder, HOME_MODULE_OPTIONS, moduleId, targetIndex);
+  if (next === current) return;
+  await saveSettings({ homeModuleOrder: next });
+  renderHomeIfVisible();
+}
+
+async function resetHomeModuleOrder() {
+  await saveSettings({ homeModuleOrder: homeModulePreferencesApi.DEFAULT_HOME_MODULE_ORDER });
+  renderHomeIfVisible();
+}
+
+async function showAllHomeModules() {
+  await saveSettings({ hiddenHomeModules: '' });
+  renderHomeIfVisible();
+}
+
 function hiddenServiceProviderSet() {
   return new Set(serviceStatusProviderPreferencesApi.normalizeHidden(state.settings?.hiddenServiceProviders, SERVICE_PROVIDER_OPTIONS).split(',').filter(Boolean));
 }
@@ -4041,6 +4352,38 @@ async function onServiceProviderReorder(providerId, targetIndex) {
   await saveSettings({ serviceProviderDisplayOrder: next });
 }
 
+async function onHomeLimitProviderVisibilityToggle(providerId) {
+  const hidden = hiddenHomeLimitProviderSet();
+  if (hidden.has(providerId)) hidden.delete(providerId);
+  else hidden.add(providerId);
+  await saveSettings({ hiddenHomeLimitProviders: Array.from(hidden).join(',') });
+  renderHomeIfVisible();
+}
+
+async function onHomeLimitProviderMove(providerId, direction) {
+  const next = limitProviderOrderApi.moveLimitProvider(homeLimitProviderOrderValue(), LIMIT_PROVIDERS, providerId, direction);
+  await saveSettings({ homeLimitProviderOrder: next });
+  renderHomeIfVisible();
+}
+
+async function onHomeLimitProviderReorder(providerId, targetIndex) {
+  const current = limitProviderOrderApi.normalizeLimitProviderOrder(homeLimitProviderOrderValue(), LIMIT_PROVIDERS).join(',');
+  const next = limitProviderOrderApi.reorderLimitProvider(homeLimitProviderOrderValue(), LIMIT_PROVIDERS, providerId, targetIndex);
+  if (next === current) return;
+  await saveSettings({ homeLimitProviderOrder: next });
+  renderHomeIfVisible();
+}
+
+async function resetHomeLimitProviderOrder() {
+  await saveSettings({ homeLimitProviderOrder: '' });
+  renderHomeIfVisible();
+}
+
+async function showAllHomeLimitProviders() {
+  await saveSettings({ hiddenHomeLimitProviders: '' });
+  renderHomeIfVisible();
+}
+
 async function resetServiceProviderOrder() {
   await saveSettings({ serviceProviderDisplayOrder: '' });
 }
@@ -4052,6 +4395,8 @@ async function showAllServiceProviders() {
 async function onPreferenceReorder(kind, id, targetIndex) {
   if (kind === 'client') await onClientDisplayReorder(id, targetIndex);
   else if (kind === 'view') await onViewDisplayReorder(id, targetIndex);
+  else if (kind === 'homeModule') await onHomeModuleReorder(id, targetIndex);
+  else if (kind === 'homeLimitProvider') await onHomeLimitProviderReorder(id, targetIndex);
   else if (kind === 'statusProvider') await onServiceProviderReorder(id, targetIndex);
   else await onLimitProviderReorder(id, targetIndex);
 }
@@ -4079,6 +4424,16 @@ async function onPreferenceOrderCommit(kind, order, id) {
     if (value !== current) await saveSettings({ viewDisplayOrder: value });
     return;
   }
+  if (kind === 'homeModule') {
+    const current = homeModulePreferencesApi.normalizeHomeModuleOrder(state.settings?.homeModuleOrder, HOME_MODULE_OPTIONS).join(',');
+    if (value !== current) await saveSettings({ homeModuleOrder: value });
+    return;
+  }
+  if (kind === 'homeLimitProvider') {
+    const current = limitProviderOrderApi.normalizeLimitProviderOrder(homeLimitProviderOrderValue(), LIMIT_PROVIDERS).join(',');
+    if (value !== current) await saveSettings({ homeLimitProviderOrder: value });
+    return;
+  }
   if (kind === 'statusProvider') {
     const current = serviceStatusProviderPreferencesApi.normalizeOrder(state.settings?.serviceProviderDisplayOrder, SERVICE_PROVIDER_OPTIONS).join(',');
     if (value !== current) await saveSettings({ serviceProviderDisplayOrder: value });
@@ -4094,6 +4449,8 @@ function onPreferenceOrderKeydown(event, kind, id) {
     event.preventDefault();
     if (kind === 'client') void onClientDisplayMove(id, moves[event.key]);
     else if (kind === 'view') void onViewDisplayMove(id, moves[event.key]);
+    else if (kind === 'homeModule') void onHomeModuleMove(id, moves[event.key]);
+    else if (kind === 'homeLimitProvider') void onHomeLimitProviderMove(id, moves[event.key]);
     else if (kind === 'statusProvider') void onServiceProviderMove(id, moves[event.key]);
     else void onLimitProviderMove(id, moves[event.key]);
     return;
@@ -4142,6 +4499,10 @@ async function saveSettings(patch) {
   preserveSettingsPanelScroll(syncSettingsForm);
   restartTimer();
   maybeUpdateBarsIcon();
+}
+
+function renderHomeIfVisible() {
+  if (state.breakdown === 'home' && state.stats) render();
 }
 
 function updateTitleFit() {

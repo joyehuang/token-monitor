@@ -32,6 +32,11 @@ const {
   normalizeViewDisplayOrder
 } = require('./renderer/viewDisplayPreferences');
 const {
+  defaultHomeModulePreferences,
+  normalizeHiddenHomeModules,
+  normalizeHomeModuleOrder
+} = require('./renderer/homeModulePreferences');
+const {
   checkNpmForNewer,
   cleanupStaleStaging,
   downloadFromNpm,
@@ -117,6 +122,7 @@ const LANGUAGE_VALUES = new Set(['auto', 'en', 'zh-TW', 'zh-CN']);
 const HUB_DEFAULT_PORT = 17321;
 const DEFAULT_CLIENT_LIST = DEFAULT_CLIENTS.split(',').map((id) => ({ id }));
 const DEFAULT_VIEW_LIST = ['home', 'tool', 'status', 'device', 'model', 'session', 'limits', 'trends'].map((id) => ({ id }));
+const DEFAULT_HOME_MODULE_LIST = ['limits', 'tool', 'device', 'model', 'trends'].map((id) => ({ id }));
 
 let mainWindow = null;
 let dashboardWindow = null;
@@ -170,6 +176,8 @@ function defaultSettings() {
     pinnedClients: '',
     viewDisplayOrder: '',
     hiddenViews: defaultViewDisplayPreferences().hiddenViews,
+    homeModuleOrder: defaultHomeModulePreferences().homeModuleOrder,
+    hiddenHomeModules: defaultHomeModulePreferences().hiddenHomeModules,
     historyEnabled: false,
     wslScanEnabled: parseBoolean(process.env.TOKEN_MONITOR_WSL_SCAN, true),
     serviceProviderDisplayOrder: '',
@@ -181,6 +189,8 @@ function defaultSettings() {
     limitsEnabled: parseBoolean(process.env.TOKEN_MONITOR_LIMITS_ENABLED, true),
     limitProviders: parseLimitProviders(process.env.TOKEN_MONITOR_LIMIT_PROVIDERS).join(','),
     limitProviderOrder: defaultLimitProviderOrder(),
+    homeLimitProviderOrder: '',
+    hiddenHomeLimitProviders: '',
     limitsRefreshMs: normalizeLimitsRefreshMs(process.env.TOKEN_MONITOR_LIMITS_REFRESH_MS),
     showLimitSource: parseBoolean(process.env.TOKEN_MONITOR_SHOW_LIMIT_SOURCE, false),
     showActiveAccount: parseBoolean(process.env.TOKEN_MONITOR_SHOW_ACTIVE_ACCOUNT, false),
@@ -408,6 +418,28 @@ function migrateLimitProviders(value) {
 
 function migrateLimitProviderOrder(value) {
   return parseLimitProviders(value).join(',') || defaultLimitProviderOrder();
+}
+
+function migrateHomeLimitProviderOrder(value) {
+  const isEmpty = value === undefined || value === null || value === ''
+    || (Array.isArray(value) && value.length === 0);
+  if (isEmpty) return '';
+  const normalized = parseLimitProviders(value).join(',');
+  return normalized && normalized !== defaultLimitProviderOrder() ? normalized : '';
+}
+
+function normalizeHiddenLimitProviders(value) {
+  const known = new Set(parseLimitProviders());
+  const raw = Array.isArray(value) ? value : String(value || '').split(',');
+  const seen = new Set();
+  const hidden = [];
+  for (const item of raw) {
+    const id = String(item || '').trim().toLowerCase();
+    if (!known.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    hidden.push(id);
+  }
+  return hidden.join(',');
 }
 
 function migrateClientDisplayOrder(value) {
@@ -811,6 +843,18 @@ function readSettings() {
     }
     if (saved.hiddenViews !== undefined) {
       merged.hiddenViews = normalizeHiddenViews(saved.hiddenViews, DEFAULT_VIEW_LIST);
+    }
+    if (saved.homeModuleOrder !== undefined) {
+      merged.homeModuleOrder = normalizeHomeModuleOrder(saved.homeModuleOrder, DEFAULT_HOME_MODULE_LIST).join(',');
+    }
+    if (saved.hiddenHomeModules !== undefined) {
+      merged.hiddenHomeModules = normalizeHiddenHomeModules(saved.hiddenHomeModules, DEFAULT_HOME_MODULE_LIST);
+    }
+    if (saved.homeLimitProviderOrder !== undefined) {
+      merged.homeLimitProviderOrder = migrateHomeLimitProviderOrder(saved.homeLimitProviderOrder);
+    }
+    if (saved.hiddenHomeLimitProviders !== undefined) {
+      merged.hiddenHomeLimitProviders = normalizeHiddenLimitProviders(saved.hiddenHomeLimitProviders);
     }
     if (saved.historyEnabled !== undefined) {
       merged.historyEnabled = parseBoolean(saved.historyEnabled, false);
@@ -2362,6 +2406,10 @@ app.whenReady().then(() => {
       pinnedClients: patch.pinnedClients !== undefined ? normalizePinnedClients(patch.pinnedClients, DEFAULT_CLIENT_LIST) : normalizePinnedClients(settings.pinnedClients, DEFAULT_CLIENT_LIST),
       viewDisplayOrder: patch.viewDisplayOrder !== undefined ? migrateViewDisplayOrder(patch.viewDisplayOrder) : (settings.viewDisplayOrder || ''),
       hiddenViews: patch.hiddenViews !== undefined ? normalizeHiddenViews(patch.hiddenViews, DEFAULT_VIEW_LIST) : normalizeHiddenViews(settings.hiddenViews, DEFAULT_VIEW_LIST),
+      homeModuleOrder: patch.homeModuleOrder !== undefined ? normalizeHomeModuleOrder(patch.homeModuleOrder, DEFAULT_HOME_MODULE_LIST).join(',') : normalizeHomeModuleOrder(settings.homeModuleOrder, DEFAULT_HOME_MODULE_LIST).join(','),
+      hiddenHomeModules: patch.hiddenHomeModules !== undefined ? normalizeHiddenHomeModules(patch.hiddenHomeModules, DEFAULT_HOME_MODULE_LIST) : normalizeHiddenHomeModules(settings.hiddenHomeModules, DEFAULT_HOME_MODULE_LIST),
+      homeLimitProviderOrder: patch.homeLimitProviderOrder !== undefined ? migrateHomeLimitProviderOrder(patch.homeLimitProviderOrder) : (settings.homeLimitProviderOrder || ''),
+      hiddenHomeLimitProviders: patch.hiddenHomeLimitProviders !== undefined ? normalizeHiddenLimitProviders(patch.hiddenHomeLimitProviders) : normalizeHiddenLimitProviders(settings.hiddenHomeLimitProviders),
       historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
       wslScanEnabled: parseBoolean(patch.wslScanEnabled ?? settings.wslScanEnabled, true),
       serviceProviderDisplayOrder: patch.serviceProviderDisplayOrder !== undefined ? String(patch.serviceProviderDisplayOrder || '') : (settings.serviceProviderDisplayOrder || ''),

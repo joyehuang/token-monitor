@@ -191,6 +191,17 @@ test('Home model rows align icon spacing with the limit account rows', () => {
   assert.match(cssRule(css, '.home-model-row'), /column-gap:\s*8px/);
 });
 
+test('Home tool and device metric columns align with the model summary rows', () => {
+  const css = readRendererFile('styles.css');
+  assert.match(cssRule(css, '.home-tool-row'), /grid-template-columns:\s*10px minmax\(0, 1fr\) minmax\(42px, auto\) minmax\(31px, auto\)/);
+  assert.match(cssRule(css, '.home-device-row'), /grid-template-columns:\s*10px minmax\(0, 1fr\) minmax\(42px, auto\)/);
+  assert.match(cssRule(css, '.home-device-label'), /inline-flex/);
+  assert.match(cssRule(css, '.home-device-badge'), /flex:\s*0 0 auto/);
+  assert.match(cssRule(css, '.home-device-badge,\n.row.local .row-name::after'), /letter-spacing:\s*0\.04em/);
+  assert.match(cssRule(css, '.home-device-badge,\n.row.local .row-name::after'), /text-transform:\s*uppercase/);
+  assert.match(cssRule(css, '.home-device-row.is-stale .home-device-name,\n.home-device-row.is-stale .home-list-value'), /color:\s*var\(--muted\)/);
+});
+
 test('Home module jump icons align optically with their titles', () => {
   const css = readRendererFile('styles.css');
   assert.match(cssRule(css, '.home-module-head'), /align-items:\s*center/);
@@ -202,6 +213,47 @@ test('Home limit percentages use the compact Limits view typography', () => {
   const css = readRendererFile('styles.css');
   assert.match(cssRule(css, '.home-limit-window .home-list-value'), /font-size:\s*10px/);
   assert.match(cssRule(css, '.home-limit-window .home-list-value'), /line-height:\s*1\.1/);
+});
+
+test('Home billing-only limit rows span the full summary width', () => {
+  const css = readRendererFile('styles.css');
+  assert.match(cssRule(css, '.home-limit-window:only-child'), /grid-column:\s*1 \/ -1/);
+  assert.match(cssRule(css, '.home-limit-window:only-child'), /max-width:\s*none/);
+});
+
+test('Home limit provider settings stay compact and list only enabled providers', () => {
+  const app = readRendererFile('app.js');
+  const i18n = readRendererFile('i18n.js');
+  const homeLimitRows = functionBody(app, 'homeLimitRows', 'homeLimitWindowLabel');
+  const renderHomeLimitProviderList = functionBody(app, 'renderHomeLimitProviderList', 'renderHomeSettingsList');
+  const resetHomeLimitProviderOrder = functionBody(app, 'resetHomeLimitProviderOrder', 'showAllHomeLimitProviders');
+  assert.match(homeLimitRows, /const hasConfiguredOrder = Boolean\(state\.settings\?\.homeLimitProviderOrder\)/);
+  assert.doesNotMatch(homeLimitRows, /normalizeLimitProviderOrder\(state\.settings\?\.limitProviderOrder, LIMIT_PROVIDERS\)\.join\(','\) !== DEFAULT_LIMIT_PROVIDER_ORDER/);
+  assert.match(homeLimitRows, /sort: hasConfiguredOrder \? 'configured' : 'remaining'/);
+  assert.match(renderHomeLimitProviderList, /enabledLimitProviderSet\(\)/);
+  assert.match(renderHomeLimitProviderList, /orderedLimitProviders\(LIMIT_PROVIDERS, homeLimitProviderOrderValue\(\)\)/);
+  assert.match(renderHomeLimitProviderList, /const hasCustomOrder = Boolean\(state\.settings\?\.homeLimitProviderOrder\);/);
+  assert.match(renderHomeLimitProviderList, /\.filter\(\(\{ id \}\) => enabled\.has\(id\)\)/);
+  assert.match(resetHomeLimitProviderOrder, /saveSettings\(\{ homeLimitProviderOrder: '' \}\)/);
+  assert.match(i18n, /Default is least remaining first/);
+  assert.match(i18n, /預設按剩餘額度最少優先/);
+  assert.match(i18n, /默认按剩余额度最少优先/);
+  assert.doesNotMatch(renderHomeLimitProviderList, /limitProviderSettingsTags/);
+  assert.doesNotMatch(renderHomeLimitProviderList, /limit-provider-tag/);
+});
+
+test('Home limit provider settings expand with the shared accordion transition', () => {
+  const app = readRendererFile('app.js');
+  const css = readRendererFile('styles.css');
+  const renderHomeSettingsList = functionBody(app, 'renderHomeSettingsList', 'renderTrendSettingsList');
+  assert.match(renderHomeSettingsList, /homeLimitProviderContainer/);
+  assert.match(renderHomeSettingsList, /accordion-animated-container\$\{state\.homeLimitSettingsExpanded \? '' : ' hidden'\}/);
+  assert.match(renderHomeSettingsList, /accordion-animation-inner/);
+  assert.match(renderHomeSettingsList, /container\.classList\.toggle\('hidden', !state\.homeLimitSettingsExpanded\)/);
+  assert.doesNotMatch(renderHomeSettingsList, /if \(id === 'limits' && state\.homeLimitSettingsExpanded\) wrap\.append\(renderHomeLimitProviderList\(\)\)/);
+  assert.match(css, /\.home-settings-list,\s*\.home-limit-provider-list,\s*\.cursor-settings-details-inner/);
+  assert.match(css, /\.home-settings-list > \* \+ \*,\s*\.home-limit-provider-list > \* \+ \*/);
+  assert.doesNotMatch(cssRule(css, '.home-settings-list'), /gap:\s*6px/);
 });
 
 test('view switcher preserves click-to-cycle and direct selection without crowding settings', () => {

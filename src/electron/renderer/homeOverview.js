@@ -32,16 +32,44 @@
     return remaining == null ? null : 100 - remaining;
   }
 
-  function homeLimitAccounts(accounts, limit = 3) {
+  function balanceWindow(balance) {
+    if (!balance) return null;
+    const amount = Math.max(0, Number(balance?.amount || 0));
+    if (!Number.isFinite(amount)) return null;
+    const spend = Math.max(0, Number(balance?.monthSpend || 0));
+    const total = amount + spend;
+    const percent = total > 0 ? (amount / total) * 100 : 100;
+    return {
+      kind: 'balance',
+      label: '',
+      remainingPercent: clampPercent(percent),
+      amount,
+      currency: balance?.currency || ''
+    };
+  }
+
+  function accountWindows(account) {
+    const windows = Array.isArray(account?.windows) ? [...account.windows] : [];
+    if (account?.providerId === 'deepseek') {
+      const balance = balanceWindow(account.balance);
+      if (balance) windows.push(balance);
+    }
+    return windows;
+  }
+
+  function homeLimitAccounts(accounts, limit = 3, { sort = 'remaining' } = {}) {
     return (accounts || [])
       .map((account, index) => {
-        const windows = (account.windows || [])
+        const windows = accountWindows(account)
           .map((window, windowIndex) => ({
             kind: String(window.kind || '').trim().toLowerCase(),
             label: window.label || window.kind || '',
             remainingPercent: remainingPercent(window),
             resetsAt: window.resetsAt,
             resetDescription: window.resetDescription || '',
+            value: window.value || '',
+            amount: finiteNumber(window.amount),
+            currency: window.currency || '',
             index: windowIndex
           }))
           .filter((window) => window.remainingPercent != null)
@@ -64,7 +92,9 @@
         };
       })
       .filter(Boolean)
-      .sort((a, b) => a.lowestRemaining - b.lowestRemaining || a.index - b.index)
+      .sort((a, b) => sort === 'configured'
+        ? a.index - b.index
+        : a.lowestRemaining - b.lowestRemaining || a.index - b.index)
       .slice(0, Math.max(0, Number(limit) || 0))
       .map(({ index: _index, ...account }) => account);
   }
@@ -82,6 +112,95 @@
       share: total > 0 ? Math.max(0, Number(row.value || 0)) / total : 0,
       color: row.color || ''
     }));
+  }
+
+  function homeToolRows(rows, totalTokens, limit = 5) {
+    const visible = (rows || [])
+      .map((row) => ({
+        key: row?.key || row?.name || '',
+        name: row?.name || '',
+        value: Math.max(0, Number(row?.value || 0)),
+        color: row?.color || ''
+      }))
+      .filter((row) => row.value > 0)
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
+      .slice(0, Math.max(0, Number(limit) || 0));
+    const suppliedTotal = finiteNumber(totalTokens);
+    const total = suppliedTotal != null && suppliedTotal > 0
+      ? suppliedTotal
+      : visible.reduce((sum, row) => sum + row.value, 0);
+    return visible.map((row) => ({
+      ...row,
+      share: total > 0 ? row.value / total : 0
+    }));
+  }
+
+  function homeDeviceRows(devices, { localDeviceId = '', period = 'today', limit = 4 } = {}) {
+    const localKey = String(localDeviceId || '').trim();
+    return (devices || [])
+      .map((device, index) => {
+        const key = String(device?.deviceId || '').trim() || String(index);
+        const value = Math.max(0, Number(device?.periods?.[period]?.totalTokens || device?.[period]?.totalTokens || 0));
+        return {
+          key,
+          name: String(device?.displayName || device?.deviceId || device?.hostname || key).trim(),
+          value,
+          platform: device?.platform || '',
+          isLocal: Boolean(localKey && key === localKey),
+          isStale: Boolean(device?.stale),
+          index
+        };
+      })
+      .filter((row) => row.value > 0)
+      .sort((a, b) => Number(b.isLocal) - Number(a.isLocal)
+        || Number(a.isStale) - Number(b.isStale)
+        || b.value - a.value
+        || a.index - b.index)
+      .slice(0, Math.max(0, Number(limit) || 0))
+      .map(({ index: _index, ...row }) => row);
+  }
+
+  function providerEntriesById(providers) {
+    const byId = new Map();
+    for (const provider of providers || []) {
+      const id = String(provider?.provider || '').trim().toLowerCase();
+      if (!id) continue;
+      if (!byId.has(id)) byId.set(id, []);
+      byId.get(id).push(provider);
+    }
+    return byId;
+  }
+
+  function homeLimitAccountsForProviders({
+    providers = [],
+    providerOptions = [],
+    enabledProviderIds = [],
+    hiddenProviderIds = [],
+    colors = {},
+    limit = 3,
+    sort = 'remaining',
+    accountName
+  } = {}) {
+    const enabled = new Set((enabledProviderIds || []).map((id) => String(id || '').trim().toLowerCase()).filter(Boolean));
+    const hidden = new Set((hiddenProviderIds || []).map((id) => String(id || '').trim().toLowerCase()).filter(Boolean));
+    const byId = providerEntriesById(providers);
+    const accounts = [];
+    for (const { id: rawId, label } of providerOptions || []) {
+      const id = String(rawId || '').trim().toLowerCase();
+      if (!id || hidden.has(id) || (enabled.size > 0 && !enabled.has(id))) continue;
+      const providerEntries = byId.get(id) || [];
+      providerEntries.forEach((provider, index) => {
+        accounts.push({
+          key: `${id}:${index}`,
+          providerId: id,
+          name: typeof accountName === 'function' ? accountName(provider, index, providerEntries) : label,
+          color: colors[id] || colors.default || '',
+          windows: provider.windows || [],
+          balance: provider.balance || null
+        });
+      });
+    }
+    return homeLimitAccounts(accounts, limit, { sort });
   }
 
   function homeTrendSummary(points) {
@@ -173,7 +292,10 @@
 
   return {
     homeLimitAccounts,
+    homeLimitAccountsForProviders,
     homeModelRows,
+    homeToolRows,
+    homeDeviceRows,
     homeTrendSummary,
     pickHomeHistory,
     historyPreviewKey,

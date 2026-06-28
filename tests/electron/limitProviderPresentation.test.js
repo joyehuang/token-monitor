@@ -338,12 +338,20 @@ test('Copilot renders monthly Premium and Chat quotas as billing windows', () =>
 
 test('Home uses explicit billing labels so Copilot Premium and Chat stay distinct', () => {
   const app = readRendererFile('app.js');
+  const i18n = readRendererFile('i18n.js');
   const homeLabel = functionBody(app, 'homeLimitWindowLabel', 'renderHomeLimitModule');
+  const homeModule = functionBody(app, 'renderHomeLimitModule', 'renderHomeModelModule');
+  const valueFormatter = functionBody(app, 'formatHomeLimitWindowValue', 'balanceRemainingWindow');
 
   assert.match(homeLabel, /if \(window\?\.kind === 'billing'\) \{/);
   assert.match(homeLabel, /const label = String\(window\?\.label \|\| ''\)\.trim\(\);/);
   assert.match(homeLabel, /if \(label\) return label;/);
   assert.match(homeLabel, /billing: 'home\.limit\.billing'/);
+  assert.match(homeLabel, /if \(window\?\.kind === 'balance'\) return 'Balance';/);
+  assert.match(homeModule, /value\.textContent = window\.value \|\| formatHomeLimitWindowValue\(window\);/);
+  assert.match(valueFormatter, /`\$\{formatMoney\(window\.amount, window\.currency\)\} left`/);
+  assert.match(valueFormatter, /`\$\{formatPercent\(window\.remainingPercent\)\} left`/);
+  assert.doesNotMatch(i18n, /home\.limit\.(balance|leftPercent|leftAmount)/);
 });
 
 test('tray bars draw the billing window for a billing-only provider instead of two empty bars', () => {
