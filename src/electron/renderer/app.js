@@ -2626,6 +2626,20 @@ function setupHomeActivityHover(scroller) {
   });
   scroller.addEventListener('pointerleave', hide);
   scroller.addEventListener('scroll', hide);
+  // The tooltip lives on document.body and is only dismissed by handlers on this
+  // scroller, which renderHome() throws away on every rebuild. Expose the latest
+  // hide() so renderHome/render can clear it — DOM removal fires no pointerleave.
+  state.homeActivityHoverTeardown = hide;
+}
+
+// Dismiss the body-level activity tooltip + spotlight from outside the scroller's own
+// pointer handlers (Home rerender, or switching away from Home while a cell is hovered).
+// Clearing the ref after teardown drops the last hold on the old hide() closure, so a
+// discarded scroller + its SVG can be collected when the trends module goes away and no
+// fresh setupHomeActivityHover reassigns it. setup always re-registers before any hover.
+function hideHomeActivityTooltip() {
+  state.homeActivityHoverTeardown?.();
+  state.homeActivityHoverTeardown = null;
 }
 
 function renderHomeTrendsModule() {
@@ -2713,7 +2727,9 @@ function renderHomeTrendsModule() {
 function renderHome() {
   if (!els.homePanel) return;
   // The previous scroller (and its ResizeObserver) is about to be replaced; drop the
-  // observer so at most one is live and it is gone if the trends module disappears.
+  // observer so at most one is live and it is gone if the trends module disappears,
+  // and hide any open activity tooltip before its owning scroller is discarded.
+  hideHomeActivityTooltip();
   state.homeActivityResizeObserver?.disconnect();
   state.homeActivityResizeObserver = null;
   const period = state.stats.periods?.[state.period] || { totalTokens: 0, costUsd: 0, clients: {} };
@@ -2774,6 +2790,9 @@ function render() {
   if (!state.refreshBusy && !state.refreshFeedbackTimer) setRefreshButtonState('idle');
   els.shell.classList.toggle('session-mode', state.breakdown === 'session');
   els.shell.classList.toggle('home-mode', state.breakdown === 'home');
+  // Leaving Home only CSS-hides the panel, so its heatmap scroller never sees a
+  // pointerleave — dismiss the body-level tooltip here (renderHome covers rerenders).
+  if (state.breakdown !== 'home') hideHomeActivityTooltip();
   if (state.breakdown === 'status') ensureServiceStatusTicker(); else stopServiceStatusTicker();
   if (state.breakdown === 'home') {
     els.breakdown.classList.add('hidden');

@@ -72,6 +72,26 @@ test('Home activity uses a custom spotlight hover instead of native SVG titles',
   assert.doesNotMatch(match[1], /titleOf:/);
 });
 
+test('Home activity tooltip is dismissed on Home rerender and when the view leaves Home', () => {
+  const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
+  // The body-level tooltip only has scroller-local pointer handlers; DOM removal fires
+  // no pointerleave, so the hover setup must expose a teardown other code can invoke.
+  assert.match(rendererSource, /state\.homeActivityHoverTeardown\s*=\s*hide/);
+  // Clearing the ref after teardown lets a discarded scroller closure be collected.
+  const hideFn = rendererSource.match(/function hideHomeActivityTooltip\(\) \{([\s\S]*?)\n\}/);
+  assert.ok(hideFn, 'hideHomeActivityTooltip exists');
+  assert.match(hideFn[1], /state\.homeActivityHoverTeardown\s*=\s*null/);
+  // renderHome replaces the scroller that owns those handlers — it must hide the tooltip
+  // before rebuilding, or a cell hovered across a stats refresh leaves a stale tooltip.
+  const renderHome = rendererSource.match(/function renderHome\(\) \{([\s\S]*?)\n\}\n\nfunction render\(\)/);
+  assert.ok(renderHome, 'renderHome exists');
+  assert.match(renderHome[1], /hideHomeActivityTooltip\(\)/);
+  // Leaving Home for another view must also dismiss it (the panel is only CSS-hidden).
+  const render = rendererSource.match(/function render\(\) \{([\s\S]*?)\n\}\n\nfunction setStatus/);
+  assert.ok(render, 'render exists');
+  assert.match(render[1], /breakdown !== 'home'[\s\S]*?hideHomeActivityTooltip\(\)/);
+});
+
 test('Home device rows keep only the local badge and mute stale devices without status text', () => {
   const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
   const match = rendererSource.match(/function renderHomeDeviceModule\(\) \{([\s\S]*?)\n\}\n\nfunction dailyWithHeatIntensity/);
