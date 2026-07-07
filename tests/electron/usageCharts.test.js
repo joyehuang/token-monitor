@@ -172,6 +172,24 @@ test('heatmapSvg can include a glow filter for hovered cells', () => {
   assert.match(svg, /<feDropShadow/);
 });
 
+test('heatmapSvg can include a spotlight layer with cell data attributes', () => {
+  const svg = heatmapSvg({
+    width: 9,
+    height: 9,
+    cell: 9,
+    gap: 3,
+    cells: [{ date: '2026-06-22', intensity: 4, tokens: 1234, cost: 0.25, x: 0, y: 0, size: 9 }],
+    monthLabels: []
+  }, { spotlightId: 'homeActivitySpotlight' });
+
+  assert.match(svg, /id="homeActivitySpotlightGradient"/);
+  assert.match(svg, /id="homeActivitySpotlightMask"/);
+  assert.match(svg, /class="heat-base-layer"/);
+  assert.match(svg, /class="heat-bright-layer"/);
+  assert.match(svg, /data-d="2026-06-22"/);
+  assert.match(svg, /data-t="1234"/);
+});
+
 test('statsCards returns ordered descriptors with kinds and coerced values', () => {
   const cards = statsCards({
     totalTokens: 100, totalCost: 1.5, activeDays: 3, currentStreak: 2,

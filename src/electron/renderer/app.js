@@ -2512,6 +2512,97 @@ function setupHomeActivityScroller(scroller) {
   applyHomeActivityScroll(scroller);
 }
 
+function homeActivityTooltipEl() {
+  let tooltip = document.querySelector('.home-activity-tooltip');
+  if (tooltip) return tooltip;
+  tooltip = document.createElement('div');
+  tooltip.className = 'home-activity-tooltip';
+  tooltip.setAttribute('role', 'tooltip');
+  tooltip.setAttribute('aria-hidden', 'true');
+
+  const count = document.createElement('span');
+  count.className = 'home-activity-tooltip-count';
+  count.dataset.homeActivityTooltipCount = 'true';
+
+  const label = document.createElement('span');
+  label.className = 'home-activity-tooltip-label';
+  label.textContent = 'tokens';
+
+  const date = document.createElement('span');
+  date.className = 'home-activity-tooltip-date';
+  date.dataset.homeActivityTooltipDate = 'true';
+
+  const row = document.createElement('span');
+  row.className = 'home-activity-tooltip-row';
+  row.append(count, label);
+  tooltip.append(row, date);
+  document.body.append(tooltip);
+  return tooltip;
+}
+
+function moveHomeActivityTooltip(tooltip, cell) {
+  const cellRect = cell.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const gap = 9;
+  const pad = 6;
+  const desiredX = cellRect.left + cellRect.width / 2;
+  const x = Math.max(pad + tooltipRect.width / 2, Math.min(window.innerWidth - pad - tooltipRect.width / 2, desiredX));
+  const aboveY = cellRect.top - tooltipRect.height - gap;
+  const belowY = cellRect.bottom + gap;
+  const y = aboveY >= pad ? aboveY : Math.min(window.innerHeight - pad - tooltipRect.height, belowY);
+  tooltip.style.transform = `translate(${x}px, ${y}px) translate(-50%, 0)`;
+}
+
+function setupHomeActivityHover(scroller) {
+  const canvas = scroller.querySelector('.home-activity-canvas');
+  const svg = canvas?.querySelector('.dash-heatmap');
+  const gradient = svg?.querySelector('#homeActivitySpotlightGradient');
+  const tooltip = homeActivityTooltipEl();
+  let activeCell = null;
+
+  const hide = () => {
+    tooltip.dataset.visible = 'false';
+    tooltip.setAttribute('aria-hidden', 'true');
+    tooltip.style.transform = 'translate(-9999px, -9999px)';
+    gradient?.setAttribute('cx', '-200');
+    gradient?.setAttribute('cy', '-200');
+    if (activeCell) activeCell.removeAttribute('data-active');
+    activeCell = null;
+  };
+
+  scroller.addEventListener('pointermove', (event) => {
+    if (!svg || scroller.classList.contains('is-dragging')) {
+      hide();
+      return;
+    }
+    const rect = svg.getBoundingClientRect();
+    const view = svg.viewBox.baseVal;
+    const x = view.x + (event.clientX - rect.left) * view.width / Math.max(1, rect.width);
+    const y = view.y + (event.clientY - rect.top) * view.height / Math.max(1, rect.height);
+    gradient?.setAttribute('cx', String(Math.round(x * 10) / 10));
+    gradient?.setAttribute('cy', String(Math.round(y * 10) / 10));
+
+    const target = event.target instanceof Element ? event.target.closest('.heat[data-d]') : null;
+    const cell = target && canvas.contains(target) ? target : null;
+    if (!cell) {
+      hide();
+      return;
+    }
+    if (activeCell !== cell) {
+      activeCell?.removeAttribute('data-active');
+      activeCell = cell;
+      activeCell.setAttribute('data-active', 'true');
+      tooltip.querySelector('[data-home-activity-tooltip-count]').textContent = formatCompact(Number(cell.dataset.t || 0));
+      tooltip.querySelector('[data-home-activity-tooltip-date]').textContent = cell.dataset.d || '';
+    }
+    tooltip.dataset.visible = 'true';
+    tooltip.setAttribute('aria-hidden', 'false');
+    moveHomeActivityTooltip(tooltip, cell);
+  });
+  scroller.addEventListener('pointerleave', hide);
+  scroller.addEventListener('scroll', hide);
+}
+
 function renderHomeTrendsModule() {
   const charts = window.TokenMonitorUsageCharts;
   const historyEnabled = state.settings?.historyEnabled !== false;
@@ -2557,12 +2648,14 @@ function renderHomeTrendsModule() {
   activityCanvas.className = 'home-activity-canvas';
   activityCanvas.innerHTML = charts.heatmapSvg(activity, {
     monthLabel: (month) => compactMonthLabel(month.label),
-    titleOf: (cell) => `${cell.date} · ${formatCompact(cell.tokens)} tokens`,
     radius: activityLayout.radius,
-    glowFilterId: 'homeActivityHeatGlow'
+    glowFilterId: 'homeActivityHeatGlow',
+    spotlightId: 'homeActivitySpotlight',
+    spotlightRadius: 82
   });
   activityScroll.append(activityCanvas);
   setupHomeActivityScroller(activityScroll);
+  setupHomeActivityHover(activityScroll);
   const linePoints = charts.clampDaily(points, 45);
   const summary = homeOverviewApi.homeTrendSummary(linePoints);
   const trendHead = document.createElement('div');

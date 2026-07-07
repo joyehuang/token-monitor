@@ -49,6 +49,8 @@ test('Home activity heatmap is a scaled copy of the dashboard heatmap', () => {
   }
   assert.doesNotMatch(rule(css, '.home-activity-scroll'), /padding-block/);
   assert.match(rule(css, '.home-activity-canvas .heat:hover'), /filter:\s*url\("#homeActivityHeatGlow"\)/);
+  assert.match(rule(css, '.home-activity-canvas .heat-bright-layer'), /pointer-events:\s*none/);
+  assert.match(rule(css, '.home-activity-tooltip'), /position:\s*fixed/);
   assert.match(rule(css, '.home-activity-canvas .heat-month'), /fill:\s*rgba\(var\(--line-rgb\), 0\.5\)/);
 });
 
@@ -60,6 +62,15 @@ test('Home module selection is independent from main view preferences', () => {
   assert.match(match[1], /hiddenHomeModuleSet|orderedHomeModules|HOME_MODULE_OPTIONS/);
   assert.match(rendererSource, /function renderHomeToolModule/);
   assert.match(rendererSource, /function renderHomeDeviceModule/);
+});
+
+test('Home activity uses a custom spotlight hover instead of native SVG titles', () => {
+  const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
+  const match = rendererSource.match(/function renderHomeTrendsModule\(\) \{([\s\S]*?)\n\}\n\nfunction renderHome/);
+  assert.ok(match, 'renderHomeTrendsModule exists');
+  assert.match(match[1], /setupHomeActivityHover\(activityScroll\)/);
+  assert.match(match[1], /spotlightId:\s*'homeActivitySpotlight'/);
+  assert.doesNotMatch(match[1], /titleOf:/);
 });
 
 test('Home device rows keep only the local badge and mute stale devices without status text', () => {
