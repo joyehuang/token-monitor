@@ -2667,8 +2667,8 @@ function renderHomeTrendsModule() {
   const historyEnabled = state.settings?.historyEnabled !== false;
   const preview = state.stats?.historyPreview || { daily: [] };
   const history = homeOverviewApi.pickHomeHistory(state.homeHistory, preview);
-  const points = history.daily || [];
-  if (!historyEnabled || points.length === 0) {
+  const rawDaily = history.daily || [];
+  if (!historyEnabled || rawDaily.length === 0) {
     const { module, body } = homeModuleShell('trends', t('home.activity'), 'trends');
     const empty = document.createElement('div');
     empty.className = 'home-module-empty';
@@ -2690,9 +2690,15 @@ function renderHomeTrendsModule() {
     body.append(empty);
     return module;
   }
+  // homeHistory is fetched once and frozen, so its today bucket lags the live headline
+  // total; patch today's tokens with the live period total (like the trends sparkline's
+  // patchTodayBar) so the heatmap and trend line match the number shown above them.
+  const today = new Date().toISOString().slice(0, 10);
+  const todayPeriod = state.stats?.periods?.today;
+  const points = homeOverviewApi.patchDailyToday(rawDaily, today, Number(todayPeriod?.totalTokens || 0), Number(todayPeriod?.costUsd || 0));
   const activityLayout = homeOverviewApi.homeActivityHeatmapLayout();
   const activity = charts.rollingYearHeatmap(dailyWithHeatIntensity(points), {
-    endDate: new Date().toISOString().slice(0, 10),
+    endDate: today,
     cell: activityLayout.cell,
     gap: activityLayout.gap
   });

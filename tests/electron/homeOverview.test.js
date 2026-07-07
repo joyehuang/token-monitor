@@ -17,6 +17,7 @@ const {
   homeActivityScrollRecord,
   homeTrendSummary,
   pickHomeHistory,
+  patchDailyToday,
   historyPreviewKey,
   shouldFetchHomeHistory
 } = require('../../src/electron/renderer/homeOverview');
@@ -324,6 +325,37 @@ test('pickHomeHistory falls back to the preview rather than shadowing it with an
 test('pickHomeHistory returns an empty-daily shape when both sources are empty', () => {
   assert.deepEqual(pickHomeHistory(null, null), { daily: [] });
   assert.equal(pickHomeHistory(emptyHistory, emptyHistory), emptyHistory);
+});
+
+test('patchDailyToday overwrites the frozen today bucket with the live headline total', () => {
+  const daily = [
+    { date: '2026-07-06', tokens: 200, cost: 2 },
+    { date: '2026-07-07', tokens: 61_500_000, cost: 490 } // stale one-shot snapshot
+  ];
+  const patched = patchDailyToday(daily, '2026-07-07', 61_700_000, 492.5);
+  const patchedToday = patched.find((d) => d.date === '2026-07-07');
+  assert.equal(patchedToday.tokens, 61_700_000);
+  assert.equal(patchedToday.cost, 492.5); // cost drives the heatmap intensity, patch it too
+  assert.equal(patched.find((d) => d.date === '2026-07-06').tokens, 200); // past days untouched
+  assert.equal(patched.length, 2);
+  assert.equal(daily[1].tokens, 61_500_000); // input not mutated
+});
+
+test('patchDailyToday appends today with live cost so its heatmap cell is not empty', () => {
+  const daily = [{ date: '2026-07-06', tokens: 200, cost: 2 }];
+  const patched = patchDailyToday(daily, '2026-07-07', 61_700_000, 492.5);
+  assert.equal(patched.length, 2);
+  const appended = patched[patched.length - 1];
+  assert.equal(appended.date, '2026-07-07');
+  assert.equal(appended.tokens, 61_700_000);
+  assert.equal(appended.cost, 492.5); // intensity uses cost — a 0 here renders today as empty
+});
+
+test('renderHomeTrendsModule patches the activity today cell with the live period total', () => {
+  const rendererSource = fs.readFileSync(path.join(__dirname, '../../src/electron/renderer/app.js'), 'utf8');
+  const match = rendererSource.match(/function renderHomeTrendsModule\(\) \{([\s\S]*?)\n\}\n\nfunction renderHome/);
+  assert.ok(match, 'renderHomeTrendsModule exists');
+  assert.match(match[1], /patchDailyToday\([\s\S]*?totalTokens/);
 });
 
 test('historyPreviewKey is empty for no days and changes as the daily tail moves', () => {
