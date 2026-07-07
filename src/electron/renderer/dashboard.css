@@ -4,15 +4,15 @@
    these on a light theme; the defaults here mirror the widget's :root. */
 :root {
   color-scheme: dark;
-  --glass-rgb: 48, 52, 56;
+  --glass-rgb: 11, 11, 16;
   --glass-alpha: 0.68;
   --glass: rgba(var(--glass-rgb), var(--glass-alpha));
   --overlay-rgb: 255, 255, 255;
   --line-rgb: 232, 238, 244;
   --line-alpha: 0.14;
   --line: rgba(var(--line-rgb), var(--line-alpha));
-  --panel-rgb: 16, 21, 30;
-  --text: #eef5fb;
+  --panel-rgb: 9, 9, 11;
+  --text: #fafafa;
 }
 html, body { margin: 0; height: 100%; }
 body {

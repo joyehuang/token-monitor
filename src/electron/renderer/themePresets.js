@@ -24,27 +24,23 @@
     muted: '--muted'
   };
 
-  // Built-in defaults — must mirror the :root values in styles.css.
-  // bg #303438 == rgb(48, 52, 56) (the --glass-rgb default).
+  // Built-in defaults — must mirror the :root values in styles.css. The local
+  // fork follows joyehuang.me's dark palette by default.
+  // bg #0b0b10 == rgb(11, 11, 16) (the --glass-rgb default).
   const DEFAULT_THEME = {
-    accent: '#b7ead4',
-    bg: '#303438',
-    text: '#eef5fb',
-    muted: '#a3adbb'
+    accent: '#659eb9',
+    bg: '#0b0b10',
+    text: '#fafafa',
+    muted: '#bfc0c7'
   };
 
   // Curated one-click themes. Each is a full palette — accent + background tint
   // + text + muted swap together, so picking one changes the whole mood, not
-  // just the accent. All stay dark (the stylesheet's overlays/borders assume a
-  // dark base); a true light mode is a separate, larger piece of work. The
-  // non-default themes borrow from well-known palettes for a familiar feel.
-  // Three themes: the shipped graphite default (also the reset point), a
-  // near-black "Carbon", and a light "Paper". Paper relies on the light-mode
-  // flip in themeCssVarEntries() so borders/panels stay visible on a pale base.
+  // just the accent. These mirror joyehuang.me's dark/light site palettes.
+  // The light preset relies on the overlay flip in themeCssVarEntries().
   const THEME_PRESETS = [
-    { id: 'default', colors: { ...DEFAULT_THEME } },
-    { id: 'obsidian', colors: { accent: '#e6e8ec', bg: '#0b0c0e', text: '#eceef2', muted: '#8f949c' } },
-    { id: 'porcelain', colors: { accent: '#2563eb', bg: '#f6f7f9', text: '#1c1f26', muted: '#5b626d' } }
+    { id: 'joyeDark', colors: { ...DEFAULT_THEME } },
+    { id: 'joyeLight', colors: { accent: '#659eb9', bg: '#fcfcfd', text: '#08080a', muted: '#47474f' } }
   ];
 
   // Surface RGBs used when the background is light, so overlays/borders read as

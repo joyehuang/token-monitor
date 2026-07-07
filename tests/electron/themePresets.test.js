@@ -34,8 +34,8 @@ test('interface palette is the four always-visible colours, each mapped to a CSS
     assert.ok(THEME_VAR_MAP[key], `missing CSS var for ${key}`);
     assert.ok(isValidHex(DEFAULT_THEME[key]), `default for ${key} is not hex`);
   }
-  // bg default must equal the --glass-rgb default (48, 52, 56).
-  assert.equal(hexToRgbTriplet(DEFAULT_THEME.bg), '48, 52, 56');
+  // bg default must equal the --glass-rgb default (11, 11, 16).
+  assert.equal(hexToRgbTriplet(DEFAULT_THEME.bg), '11, 11, 16');
 });
 
 test('hexToRgbTriplet converts hex to a CSS rgb triplet', () => {
@@ -65,7 +65,7 @@ test('themeCssVarEntries maps bg to --glass-rgb and mirrors text onto --number',
 test('isLightHex detects pale backgrounds', () => {
   assert.equal(isLightHex('#f6f7f9'), true);
   assert.equal(isLightHex('#ffffff'), true);
-  assert.equal(isLightHex('#303438'), false); // graphite default
+  assert.equal(isLightHex('#0b0b10'), false); // Joye dark default
   assert.equal(isLightHex('#0b0c0e'), false); // carbon
   assert.equal(isLightHex('not-a-hex'), false);
 });
@@ -102,9 +102,19 @@ test('every preset is a full palette of valid hex for all four keys', () => {
   }
 });
 
-test('the default preset is first and equals the documented defaults', () => {
-  assert.equal(THEME_PRESETS[0].id, 'default');
+test('the Joye dark preset is first and equals the documented defaults', () => {
+  assert.equal(THEME_PRESETS[0].id, 'joyeDark');
   assert.deepEqual(THEME_PRESETS[0].colors, DEFAULT_THEME);
+});
+
+test('Joye light preset mirrors the site light palette', () => {
+  const light = THEME_PRESETS.find((preset) => preset.id === 'joyeLight');
+  assert.deepEqual(light.colors, {
+    accent: '#659eb9',
+    bg: '#fcfcfd',
+    text: '#08080a',
+    muted: '#47474f'
+  });
 });
 
 test('isValidHex / normalizeHex', () => {

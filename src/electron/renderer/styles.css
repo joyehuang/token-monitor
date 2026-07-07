@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --glass-rgb: 48, 52, 56;
+  --glass-rgb: 11, 11, 16;
   /* Surface overlays + borders are "light on dark" by default. A light theme
      (or any light --glass-rgb) flips these to dark via JS so panels/borders stay
      visible on a pale background — see themeCssVarEntries(). */
@@ -8,8 +8,8 @@
   --line-rgb: 232, 238, 244;
   /* Recessed surfaces: the settings panel/tooltip card (--panel-rgb) and sunken
      tracks/inputs (--sunken-rgb). Both flip light on a light theme. */
-  --panel-rgb: 16, 21, 30;
-  --sunken-rgb: 4, 8, 13;
+  --panel-rgb: 9, 9, 11;
+  --sunken-rgb: 12, 12, 18;
   --glass-alpha: 0.68;
   --line-alpha: 0.138;
   --line-strong-alpha: 0.238;
@@ -20,18 +20,18 @@
   --glass-soft: rgba(var(--overlay-rgb), 0.05);
   --line: rgba(var(--line-rgb), var(--line-alpha));
   --line-strong: rgba(var(--line-rgb), var(--line-strong-alpha));
-  --text: #eef5fb;
-  --muted: #a3adbb;
-  --green: #b7ead4;
+  --text: #fafafa;
+  --muted: #bfc0c7;
+  --green: #659eb9;
   /* RGB triplet of the accent (--green), for the accent-tinted borders / glows /
      active states. Driven from the chosen accent so they flip together — see
      themeCssVarEntries(). Must match --green above. */
-  --accent-rgb: 183, 234, 212;
-  --number: #f3fbf7;
+  --accent-rgb: 101, 158, 185;
+  --number: #fafafa;
   /* Semantic blue, exposed as a triplet so the trend line and its area fill can
      share one hue (and match the blue heatmap ramp) instead of the fill borrowing
      the customisable --accent. */
-  --blue-rgb: 115, 189, 245;
+  --blue-rgb: 101, 158, 185;
   --blue: rgb(var(--blue-rgb));
   --orange: #f4a073;
   --purple: #b394f4;
