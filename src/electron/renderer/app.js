@@ -2559,13 +2559,59 @@ function setupHomeActivityHover(scroller) {
   const gradient = svg?.querySelector('#homeActivitySpotlightGradient');
   const tooltip = homeActivityTooltipEl();
   let activeCell = null;
+  let spotlightFrame = 0;
+  let spotlightVisible = false;
+  const spotlightTarget = { x: -200, y: -200 };
+  const spotlightCurrent = { x: -200, y: -200 };
+
+  const setSpotlight = (point) => {
+    gradient?.setAttribute('cx', String(Math.round(point.x * 10) / 10));
+    gradient?.setAttribute('cy', String(Math.round(point.y * 10) / 10));
+  };
+
+  const scheduleSpotlight = () => {
+    if (spotlightFrame || !gradient) return;
+    spotlightFrame = requestAnimationFrame(() => {
+      spotlightFrame = 0;
+      const dx = spotlightTarget.x - spotlightCurrent.x;
+      const dy = spotlightTarget.y - spotlightCurrent.y;
+      if (Math.abs(dx) < 0.12 && Math.abs(dy) < 0.12) {
+        spotlightCurrent.x = spotlightTarget.x;
+        spotlightCurrent.y = spotlightTarget.y;
+      } else {
+        spotlightCurrent.x += dx * 0.32;
+        spotlightCurrent.y += dy * 0.32;
+        scheduleSpotlight();
+      }
+      setSpotlight(spotlightCurrent);
+    });
+  };
+
+  const moveSpotlight = (x, y) => {
+    spotlightTarget.x = x;
+    spotlightTarget.y = y;
+    if (!spotlightVisible) {
+      spotlightVisible = true;
+      spotlightCurrent.x = x;
+      spotlightCurrent.y = y;
+      setSpotlight(spotlightCurrent);
+      return;
+    }
+    scheduleSpotlight();
+  };
 
   const hide = () => {
     tooltip.dataset.visible = 'false';
     tooltip.setAttribute('aria-hidden', 'true');
     tooltip.style.transform = 'translate(-9999px, -9999px)';
-    gradient?.setAttribute('cx', '-200');
-    gradient?.setAttribute('cy', '-200');
+    if (spotlightFrame) cancelAnimationFrame(spotlightFrame);
+    spotlightFrame = 0;
+    spotlightVisible = false;
+    spotlightTarget.x = -200;
+    spotlightTarget.y = -200;
+    spotlightCurrent.x = -200;
+    spotlightCurrent.y = -200;
+    setSpotlight(spotlightCurrent);
     if (activeCell) activeCell.removeAttribute('data-active');
     activeCell = null;
   };
@@ -2579,8 +2625,7 @@ function setupHomeActivityHover(scroller) {
     const view = svg.viewBox.baseVal;
     const x = view.x + (event.clientX - rect.left) * view.width / Math.max(1, rect.width);
     const y = view.y + (event.clientY - rect.top) * view.height / Math.max(1, rect.height);
-    gradient?.setAttribute('cx', String(Math.round(x * 10) / 10));
-    gradient?.setAttribute('cy', String(Math.round(y * 10) / 10));
+    moveSpotlight(x, y);
 
     const target = event.target instanceof Element ? event.target.closest('.heat[data-d]') : null;
     const cell = target && canvas.contains(target) ? target : null;

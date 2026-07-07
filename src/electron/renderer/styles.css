@@ -1998,7 +1998,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   fill: rgba(var(--overlay-rgb), 0.03);
   stroke: none;
   stroke-width: 0;
-  transition: fill 140ms ease, filter 140ms ease, stroke 140ms ease, transform 140ms ease;
+  transition: fill 140ms ease, stroke 140ms ease, transform 140ms ease;
 }
 .home-activity-canvas .heat[data-active="true"],
 .home-activity-canvas .heat:hover {
@@ -2042,7 +2042,6 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 }
 .home-activity-canvas .heat-bright.lvl-4 {
   fill: rgb(200, 238, 255);
-  filter: url("#homeActivityHeatGlow");
 }
 .home-activity-canvas .heat-month {
   fill: rgba(var(--line-rgb), 0.5);
