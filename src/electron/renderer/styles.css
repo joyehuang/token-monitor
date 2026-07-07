@@ -2761,6 +2761,28 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   gap: 8px;
   color: var(--muted);
   font-size: 11px;
+  --footer-control-height: 30px;
+  --footer-control-border: rgba(var(--line-rgb), 0.18);
+  --footer-control-bg: rgba(var(--overlay-rgb), var(--control-alpha));
+  --footer-control-color: var(--muted);
+  --footer-control-hover-border: rgba(var(--accent-rgb), 0.32);
+  --footer-control-hover-bg: rgba(var(--accent-rgb), 0.1);
+  --footer-control-hover-color: var(--green);
+  --footer-control-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.08);
+}
+.footer :is(.icon-button, .refresh-button) {
+  border-color: var(--footer-control-border);
+  background: var(--footer-control-bg);
+  color: var(--footer-control-color);
+  box-shadow: var(--footer-control-shadow);
+}
+.footer :is(.icon-button, .refresh-button):hover,
+.footer :is(.icon-button, .refresh-button):focus-visible,
+.footer .icon-button.active {
+  border-color: var(--footer-control-hover-border);
+  background: var(--footer-control-hover-bg);
+  color: var(--footer-control-hover-color);
+  box-shadow: var(--footer-control-shadow);
 }
 .view-switcher {
   position: relative;
@@ -2773,13 +2795,16 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 }
 :is(.view-switcher-current, .view-switcher-disclosure) {
   display: inline-flex;
-  height: 30px;
+  height: var(--footer-control-height);
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(var(--line-rgb), 0.18);
-  background: rgba(var(--overlay-rgb), var(--control-alpha));
-  color: var(--muted);
+  border: 1px solid var(--footer-control-border);
+  background: var(--footer-control-bg);
+  color: var(--footer-control-color);
   cursor: pointer;
+  box-shadow: var(--footer-control-shadow);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 .view-switcher-current {
@@ -2806,8 +2831,8 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .view-switcher.is-open .view-switcher-current,
 .view-switcher.is-open .view-switcher-disclosure {
   border-color: rgba(var(--accent-rgb), 0.24);
-  background: rgba(var(--accent-rgb), 0.08);
-  color: var(--text);
+  background: var(--footer-control-hover-bg);
+  color: var(--footer-control-hover-color);
 }
 .view-switcher-current:focus-visible,
 .view-switcher-disclosure:focus-visible,
