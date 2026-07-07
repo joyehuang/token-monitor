@@ -863,7 +863,8 @@ function readSettings() {
   settingsPath = path.join(app.getPath('userData'), 'settings.json');
   try {
     const defaults = defaultSettings();
-    const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const raw = fs.readFileSync(settingsPath, 'utf8');
+    const saved = JSON.parse(raw.replace(/^\uFEFF/, ''));
     if (!saved.secret && defaults.secret) delete saved.secret;
     const merged = { ...defaults, ...saved };
     // Migrate older configs that predate hubMode: infer from hubUrl.
@@ -946,7 +947,17 @@ function readSettings() {
     Object.assign(merged, normalizeTrayModeSettings(merged));
     return normalizeWindowBehaviorSettings(merged);
   }
-  catch (_error) {
+  catch (error) {
+    if (settingsPath && fs.existsSync(settingsPath)) {
+      try {
+        const stamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+        const invalidPath = path.join(path.dirname(settingsPath), `settings.invalid-${stamp}.json`);
+        fs.copyFileSync(settingsPath, invalidPath);
+        console.warn(`[settings] failed to parse settings.json; copied invalid file to ${invalidPath}: ${error.message}`);
+      } catch (copyError) {
+        console.warn(`[settings] failed to preserve invalid settings.json: ${copyError.message}`);
+      }
+    }
     const defaults = defaultSettings();
     Object.assign(defaults, normalizeTrayModeSettings(defaults));
     return normalizeWindowBehaviorSettings(defaults);
@@ -1093,6 +1104,7 @@ let syncCollectorHandle = null;
 let lastCollectedDevice = null;
 let tray = null;
 let latestStats = null;
+let lastRemoteStats = null;
 const DEFAULT_EXPORT_INTERVAL_MS = 60 * 1000;
 let lastExportAt = 0;
 let lastAutoExport = { dir: null, signature: null };
@@ -1135,6 +1147,31 @@ function effectiveHubConfig() {
 
 function hubDataFile() {
   return path.join(app.getPath('userData'), 'hub-devices.json');
+}
+
+function remoteStatsCachePath() {
+  return path.join(app.getPath('userData'), 'remote-stats-cache.json');
+}
+
+function readRemoteStatsCache() {
+  try {
+    const raw = fs.readFileSync(remoteStatsCachePath(), 'utf8');
+    return JSON.parse(raw.replace(/^\uFEFF/, ''));
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeRemoteStatsCache(stats) {
+  if (!stats) return;
+  try {
+    const file = remoteStatsCachePath();
+    const tmp = `${file}.tmp-${process.pid}`;
+    fs.writeFileSync(tmp, `${JSON.stringify(stats)}\n`, 'utf8');
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    console.warn(`[sync] failed to cache remote stats: ${error.message}`);
+  }
 }
 
 function sendHubPush(payload) {
@@ -1374,6 +1411,10 @@ function injectLocalDeviceStatus(stats) {
 function sendPush(payload) {
   if (payload?.data?.stats) {
     injectLocalDeviceStatus(payload.data.stats);
+    if (mode === 'sync') {
+      lastRemoteStats = payload.data.stats;
+      writeRemoteStatsCache(lastRemoteStats);
+    }
     latestStats = payload.data.stats;
     updateTrayDisplay();
     if (settings.exportAutoEnabled && settings.exportDir && Date.now() - lastExportAt >= exportIntervalMs()) {
@@ -1972,9 +2013,22 @@ async function fetchStats(options = {}) {
   const { url: hubUrl, secret } = effectiveHubConfig();
   if (!hubUrl) return withHistoryPreview(aggregateDevices([], 0), []);
   const url = `${hubUrl.replace(/\/$/, '')}/api/stats`;
-  const response = await fetch(url, { headers: secret ? { authorization: `Bearer ${secret}` } : {} });
-  if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  return injectLocalDeviceStatus(await response.json());
+  try {
+    const response = await fetch(url, { headers: secret ? { authorization: `Bearer ${secret}` } : {} });
+    if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    const stats = injectLocalDeviceStatus(await response.json());
+    lastRemoteStats = stats;
+    writeRemoteStatsCache(lastRemoteStats);
+    return stats;
+  } catch (error) {
+    const cachedStats = lastRemoteStats || readRemoteStatsCache();
+    if (cachedStats) {
+      lastRemoteStats = cachedStats;
+      sendStatus(false, classifyStreamFailure({ errorCode: error?.cause?.code || error?.code, message: error?.message }));
+      return cachedStats;
+    }
+    throw error;
+  }
 }
 
 function managedPricingSidecarPath() {
