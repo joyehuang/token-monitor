@@ -15,6 +15,13 @@ async function sequentialTokscale() {
     return { entries: [{ client: 'claude', sessionId: 's1', model: 'claude-opus-4-8', input: 100, output: 5, cost: 1 }] };
   }
   if (calls === 2) {
+    // --week
+    return { entries: [
+      { client: 'claude', sessionId: 's1', model: 'claude-opus-4-8', input: 300, output: 10, cost: 3 },
+      { client: 'claude', sessionId: 's2', model: 'claude-sonnet-4-8', input: 100, output: 5, cost: 0.5 }
+    ] };
+  }
+  if (calls === 3) {
     // --month
     return { entries: [
       { client: 'claude', sessionId: 's1', model: 'claude-opus-4-8', input: 500, output: 20, cost: 5 },
@@ -43,21 +50,29 @@ test('progressive loading fires onProgress after each period scan', async () => 
     onProgress: (data) => partials.push({ ...data })
   });
   // First partial: today only
-  assert.equal(partials.length, 2, 'should fire onProgress twice (today, month)');
+  assert.equal(partials.length, 3, 'should fire onProgress three times (today, week, month)');
   assert.equal(partials[0].today.totalTokens, 105, 'first partial should have today tokens');
+  assert.equal(partials[0].week, undefined, 'first partial should not yet have week');
   assert.equal(partials[0].month, undefined, 'first partial should not yet have month');
   assert.equal(partials[0].allTime, undefined, 'first partial should not yet have allTime');
   // No history or limits in partials — carryDeviceHistory contract
   assert.equal('history' in partials[0], false, 'partial must not have history key');
   assert.equal('limits' in partials[0], false, 'partial must not have limits key');
-  // Second partial: today + month
+  // Second partial: today + week
   assert.equal(partials[1].today.totalTokens, 105, 'second partial should still have today');
-  assert.equal(partials[1].month.totalTokens, 730, 'second partial should have month tokens');
+  assert.equal(partials[1].week.totalTokens, 415, 'second partial should have week tokens');
+  assert.equal(partials[1].month, undefined, 'second partial should not yet have month');
   assert.equal(partials[1].allTime, undefined, 'second partial should not yet have allTime');
   assert.equal('history' in partials[1], false, 'second partial must not have history key');
   assert.equal('limits' in partials[1], false, 'second partial must not have limits key');
+  // Third partial: today + week + month
+  assert.equal(partials[2].today.totalTokens, 105, 'third partial should still have today');
+  assert.equal(partials[2].week.totalTokens, 415, 'third partial should still have week');
+  assert.equal(partials[2].month.totalTokens, 730, 'third partial should have month tokens');
+  assert.equal(partials[2].allTime, undefined, 'third partial should not yet have allTime');
   // Final summary must include all periods
   assert.equal(summary.today.totalTokens, 105, 'final today');
+  assert.equal(summary.week.totalTokens, 415, 'final week');
   assert.equal(summary.month.totalTokens, 730, 'final month');
   assert.equal(summary.allTime.totalTokens, 2930, 'final allTime');
 });
@@ -65,7 +80,7 @@ test('progressive loading fires onProgress after each period scan', async () => 
 test('progressive loading skips onProgress on anchored ticks', async () => {
   calls = 0;
   const partials = [];
-  const anchor = { dateKey: require('../../src/shared/collector').localTodayKey(), today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
+  const anchor = { dateKey: require('../../src/shared/collector').localTodayKey(), today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
   await collectUsageOnce({
     clients: 'claude',
     allTimeSince: '2025-01-01',
@@ -83,7 +98,7 @@ test('progressive loading skips onProgress on anchored ticks', async () => {
 });
 
 function emptyWslBundle() {
-  return { today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
+  return { today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
 }
 
 test('progressive loading onProgress throw does not abort the full scan', async () => {
@@ -105,8 +120,9 @@ test('progressive loading onProgress throw does not abort the full scan', async 
   });
   // onProgress was called (and threw, but was caught)
   assert.equal(onProgressCalled, true, 'onProgress should have been called');
-  // The full scan must still complete with all three periods
+  // The full scan must still complete with all four periods
   assert.equal(summary.today.totalTokens, 105, 'today must survive an onProgress throw');
+  assert.equal(summary.week.totalTokens, 415, 'week must survive an onProgress throw');
   assert.equal(summary.month.totalTokens, 730, 'month must survive an onProgress throw');
   assert.equal(summary.allTime.totalTokens, 2930, 'allTime must survive an onProgress throw');
 });

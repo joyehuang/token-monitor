@@ -16,6 +16,7 @@ const PERIODS = {
     models: { 'gpt-5': 20, opus: 10 },
     modelCosts: { 'gpt-5': 2, opus: 1 }
   },
+  week: { totalTokens: 40, costUsd: 4, clients: { codex: 40 }, clientCosts: { codex: 4 }, models: {}, modelCosts: {} },
   month: { totalTokens: 0, costUsd: 0, clients: {}, clientCosts: {}, models: {}, modelCosts: {} },
   allTime: { totalTokens: 100, costUsd: 9, clients: { codex: 100 }, clientCosts: { codex: 9 }, models: {}, modelCosts: {} }
 };
@@ -81,6 +82,7 @@ test('renderExportJson has the documented shape', () => {
   assert.equal(json.generatedAt, 'X');
   assert.deepEqual(json.app, { name: 'token-monitor', version: '1.2.3' });
   assert.equal(json.snapshot.today.totalTokens, 30);
+  assert.equal(json.snapshot.week.totalTokens, 40);
   assert.equal(json.daily.length, 2);
   assert.equal(json.monthly.length, 1);
 });

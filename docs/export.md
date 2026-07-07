@@ -25,7 +25,7 @@ Both actions write the **same** files.
 | File | What it is |
 |---|---|
 | `token-monitor-export.json` | Complete, lossless snapshot + history in one JSON object |
-| `token-monitor-snapshot.csv` | Current totals (today / month / all-time), one row per tool and per model |
+| `token-monitor-snapshot.csv` | Current totals (today / week / month / all-time), one row per tool and per model |
 | `token-monitor-daily.csv` | Daily time-series **history**, one row per day × tool — spans your whole tracked history, not just today (only written when trend history has data) |
 
 CSV files are UTF-8 **with BOM** (so Excel opens non-ASCII correctly), RFC 4180

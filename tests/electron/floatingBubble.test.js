@@ -93,6 +93,10 @@ test('normalizeInitialRendererViewState restores a persisted last-used view', ()
     normalizeInitialRendererViewState({ period: 'month', breakdown: 'trends' }),
     { period: 'month', breakdown: 'trends' }
   );
+  assert.deepEqual(
+    normalizeInitialRendererViewState({ period: 'week', breakdown: 'home' }),
+    { period: 'week', breakdown: 'home' }
+  );
   // A bogus saved snapshot collapses onto the provided fallback rather than the
   // hard default, so a partial/corrupt value can't wipe the live state.
   assert.deepEqual(

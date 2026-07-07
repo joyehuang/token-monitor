@@ -245,7 +245,7 @@ endpoint includes account hashes for de-duplication. When enabled,
 |--------|----------------------------|--------|--------------------------------------------|
 | GET    | `/api/health`              | none   | Liveness probe + device count              |
 | GET    | `/api/public/stats`        | none   | Public aggregate stats without devices/account ids when `PUBLIC_STATS_ENABLED=1` |
-| GET    | `/api/stats`               | secret | Aggregated stats (today / month / allTime) |
+| GET    | `/api/stats`               | secret | Aggregated stats (today / week / month / allTime) |
 | GET    | `/api/stats/stream`        | secret | SSE stream, push on every ingest           |
 | GET    | `/api/devices`             | secret | Raw per-device records                     |
 | POST   | `/api/ingest`              | secret | Upsert a device's usage summary            |

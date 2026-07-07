@@ -56,7 +56,7 @@ test('configFingerprint handles undefined and empty clients', () => {
   assert.match(c, /\|undefined$/, 'undefined allTimeSince produces string "undefined"');
 });
 
-test('anchored tick with valid anchor runs todayOnly scan and derives month/allTime', async () => {
+test('anchored tick with valid anchor runs todayOnly scan and derives week/month/allTime', async () => {
   const dateKey = localTodayKey();
 
   // Establish a baseline anchor from a "previous full scan"
@@ -68,11 +68,15 @@ test('anchored tick with valid anchor runs todayOnly scan and derives month/allT
   anchorMonth.totalTokens = 500;
   anchorMonth.clients = { claude: 500 };
 
+  const anchorWeek = emptyPeriod();
+  anchorWeek.totalTokens = 300;
+  anchorWeek.clients = { claude: 300 };
+
   const anchorAllTime = emptyPeriod();
   anchorAllTime.totalTokens = 5000;
   anchorAllTime.clients = { claude: 5000 };
 
-  const anchor = { dateKey, today: anchorToday, month: anchorMonth, allTime: anchorAllTime };
+  const anchor = { dateKey, today: anchorToday, week: anchorWeek, month: anchorMonth, allTime: anchorAllTime };
 
   // Stub tokscale to return a delta: today jumped from 50 to 130
   let tokscaleCalls = 0;
@@ -94,11 +98,14 @@ test('anchored tick with valid anchor runs todayOnly scan and derives month/allT
     collectWslUsage: async () => ({ bundle: emptyWslBundle(), detected: [] })
   });
 
-  // Only one tokscale call (--today), not three
+  // Only one tokscale call (--today), not four
   assert.equal(tokscaleCalls, 1, 'anchored tick must only run one tokscale scan');
 
   // today = 80 (from stub; anchor was 50)
   assert.equal(summary.today.totalTokens, 80, 'today should come from fresh scan');
+
+  // week = anchor week 300 + (today 80 - anchor today 50) = 330
+  assert.equal(summary.week.totalTokens, 330, 'week should be derived via applyPeriodDelta');
 
   // month = anchor month 500 + (today 80 - anchor today 50) = 530
   assert.equal(summary.month.totalTokens, 530, 'month should be derived via applyPeriodDelta');
@@ -108,7 +115,7 @@ test('anchored tick with valid anchor runs todayOnly scan and derives month/allT
 });
 
 function emptyWslBundle() {
-  return { today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
+  return { today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
 }
 
 function mkPeriod() {
@@ -123,7 +130,7 @@ test('restart reuse: anchor file on disk enables todayOnly on first interval tic
   fs.mkdirSync(path.join(tmpShared), { recursive: true });
   const anchorData = {
     dateKey,
-    today: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
+    today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: null,
     configFingerprint: 'claude|2024-01-01',
     fullScanAt: new Date(Date.now() - 300000).toISOString() // 5 minutes ago — within the 1h safety window
@@ -165,7 +172,7 @@ test('restart reuse: anchor file on disk enables todayOnly on first interval tic
     // Wait for the first interval tick
     await waitForCondition(() => updates.length === 1);
     // With a valid anchor on disk, the first tick should be todayOnly (1 spawn)
-    assert.equal(calls.length, 1, 'anchor from disk enables todayOnly — one spawn, not three');
+    assert.equal(calls.length, 1, 'anchor from disk enables todayOnly — one spawn, not four');
     handle.stop();
   } finally {
     childProcess.spawn = originalSpawn;
@@ -184,7 +191,7 @@ test('future fullScanAt forces a full scan on first interval tick', async () => 
   fs.mkdirSync(path.join(tmpShared), { recursive: true });
   const anchorData = {
     dateKey,
-    today: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
+    today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: null,
     configFingerprint: 'claude|2024-01-01',
     fullScanAt: new Date(Date.now() + 3600000).toISOString() // 1 hour in the future
@@ -223,8 +230,8 @@ test('future fullScanAt forces a full scan on first interval tick', async () => 
     });
 
     await waitForCondition(() => updates.length === 1);
-    // Future fullScanAt should force a full 3-scan tick
-    assert.equal(calls.length, 3, 'future fullScanAt forces full scan — three spawns, not one');
+    // Future fullScanAt should force a full 4-scan tick
+    assert.equal(calls.length, 4, 'future fullScanAt forces full scan — four spawns, not one');
     handle.stop();
   } finally {
     childProcess.spawn = originalSpawn;
@@ -244,7 +251,7 @@ test('missing fullScanAt forces a full scan on first interval tick', async () =>
   // Valid anchor, but no fullScanAt field (old format or corrupted)
   const anchorData = {
     dateKey,
-    today: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
+    today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: null,
     configFingerprint: 'claude|2024-01-01'
     // no fullScanAt — triggers lastFullScanAt = 0 → full scan
@@ -284,7 +291,7 @@ test('missing fullScanAt forces a full scan on first interval tick', async () =>
 
     await waitForCondition(() => updates.length === 1);
     // Missing fullScanAt → lastFullScanAt = 0 → forces full scan
-    assert.equal(calls.length, 3, 'missing fullScanAt forces full scan — three spawns');
+    assert.equal(calls.length, 4, 'missing fullScanAt forces full scan — four spawns');
     handle.stop();
   } finally {
     childProcess.spawn = originalSpawn;
@@ -305,7 +312,7 @@ test('unparseable fullScanAt forces a full scan on first interval tick', async (
   // Number.isFinite(NaN) is false, so lastFullScanAt stays 0 -> full scan.
   const anchorData = {
     dateKey,
-    today: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
+    today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: null,
     configFingerprint: 'claude|2024-01-01',
     fullScanAt: 'not-a-timestamp'
@@ -345,7 +352,7 @@ test('unparseable fullScanAt forces a full scan on first interval tick', async (
 
     await waitForCondition(() => updates.length === 1);
     // Unparseable fullScanAt → lastFullScanAt = 0 → forces full scan
-    assert.equal(calls.length, 3, 'unparseable fullScanAt forces full scan — three spawns');
+    assert.equal(calls.length, 4, 'unparseable fullScanAt forces full scan — four spawns');
     handle.stop();
   } finally {
     childProcess.spawn = originalSpawn;
@@ -369,7 +376,7 @@ test('WSL toggle off: persisted wslAnchor is not merged into warm previews', asy
   const wslPeriod = { ...emptyPeriod(), totalTokens: 999, clients: { claude: 999 } };
   const anchorData = {
     dateKey,
-    today: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
+    today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: { today: wslPeriod, month: wslPeriod, allTime: wslPeriod },
     configFingerprint: 'claude|2024-01-01'
     // no fullScanAt -> forces a full scan on the first interval tick
@@ -450,9 +457,9 @@ test('cross-day anchor invalidation: stale dateKey triggers full scan', async ()
   try {
     const { collectUsageOnce } = freshCollector();
     const { emptyPeriod } = require('../../src/shared/usage');
-    const anchor = { dateKey: '2020-01-01', today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
+    const anchor = { dateKey: '2020-01-01', today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
     await collectUsageOnce({ ...baseOptions, todayOnlyAnchor: anchor });
-    assert.equal(calls.length, 3, 'stale dateKey anchor should trigger full 3-scan tick');
+    assert.equal(calls.length, 4, 'stale dateKey anchor should trigger full 4-scan tick');
   } finally {
     childProcess.spawn = originalSpawn;
     delete require.cache[collectorPath];

@@ -8,7 +8,7 @@ const { emptyPeriod } = require('../../src/shared/usage');
 
 function bundleWith(clientTokens) {
   const mk = () => { const p = emptyPeriod(); p.totalTokens = clientTokens; p.clients = { gemini: clientTokens }; return p; };
-  return { today: mk(), month: mk(), allTime: mk() };
+  return { today: mk(), week: mk(), month: mk(), allTime: mk() };
 }
 
 // Stub tokscale so the Windows scan reports only claude usage.
@@ -40,7 +40,7 @@ test('full tick merges WSL bundle and marks WSL-only client active', async () =>
 
 test('watch tick reuses wslAnchor and does not rescan WSL', async () => {
   let wslCalls = 0;
-  const anchor = { dateKey: localTodayKey(), today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
+  const anchor = { dateKey: localTodayKey(), today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
   const summary = await collectUsageOnce({
     clients: 'claude,gemini',
     allTimeSince: '2025-01-01',
@@ -59,7 +59,7 @@ test('watch tick reuses wslAnchor and does not rescan WSL', async () => {
 test('interval anchored tick with refreshWsl rescans WSL and updates anchor', async () => {
   let wslCalls = 0;
   let capturedWsl = null;
-  const anchor = { dateKey: localTodayKey(), today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
+  const anchor = { dateKey: localTodayKey(), today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
   const firstBundle = bundleWith(9);
   const secondBundle = bundleWith(15);
   let useSecond = false;
@@ -182,7 +182,7 @@ test('watch tick preserves wslStatus.detected from the frozen anchor', async () 
     limitsEnabled: false,
     runTokscale: windowsTokscale,
     platform: 'win32',
-    todayOnlyAnchor: { dateKey: localTodayKey(), today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() },
+    todayOnlyAnchor: { dateKey: localTodayKey(), today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() },
     wslAnchor: bundleWith(9),
     wslStatus: { state: 'active', detected: ['gemini'], withData: ['gemini'] }, // frozen from the last full scan
     collectWslUsage: async () => ({ bundle: bundleWith(0), detected: [] }),
@@ -202,7 +202,7 @@ test('anchored watch tick reuses frozen wslStatus without re-probing', async () 
     limitsEnabled: false,
     runTokscale: windowsTokscale,
     platform: 'win32',
-    todayOnlyAnchor: { dateKey: localTodayKey(), today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() },
+    todayOnlyAnchor: { dateKey: localTodayKey(), today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() },
     wslAnchor: bundleWith(9),
     wslStatus: frozen,                // frozen snapshot from the last full scan
     collectWslUsage: async () => ({ bundle: bundleWith(0), detected: [] }),

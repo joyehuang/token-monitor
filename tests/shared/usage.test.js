@@ -689,10 +689,10 @@ test('a history-less local tick keeps the trends dashboard populated', () => {
   assert.equal(agg.daily[0].tokens, 5);
 });
 
-// A device's today/month snapshot is a wall-clock window. Once it has rolled
+// A device's today/week/month snapshot is a wall-clock window. Once it has rolled
 // over (the device went offline before re-posting a fresh window) the frozen
 // snapshot no longer belongs to "now" and must not pollute the aggregate. The
-// device carries periodWindows.{today,month}.endsAt computed in its own local
+// device carries periodWindows.{today,week,month}.endsAt computed in its own local
 // time; the hub just checks nowMs < endsAt. allTime is cumulative and never
 // expires. See issue #37.
 function staleSnapshotDevice(extra = {}) {
@@ -702,9 +702,11 @@ function staleSnapshotDevice(extra = {}) {
     receivedAt: '2026-06-21T05:00:00.000Z',
     periodWindows: {
       today: { key: '2026-06-21', endsAt: '2026-06-22T00:00:00.000Z' },
+      week: { key: '2026-06-21', endsAt: '2026-06-22T00:00:00.000Z' },
       month: { key: '2026-06', endsAt: '2026-07-01T00:00:00.000Z' }
     },
     today: { totalTokens: 4029210, clients: { codex: 4029210 } },
+    week: { totalTokens: 4029210, clients: { codex: 4029210 } },
     month: { totalTokens: 4029210, clients: { codex: 4029210 } },
     allTime: { totalTokens: 4029210, clients: { codex: 4029210 } },
     ...extra
@@ -715,6 +717,12 @@ test('aggregateDevices drops today usage once a device today window has ended', 
   const aggregate = aggregateDevices([staleSnapshotDevice()], 10 * 60 * 1000, Date.parse('2026-06-26T05:00:00.000Z'));
   assert.equal(aggregate.periods.today.totalTokens, 0);
   assert.equal(aggregate.periods.today.clients.codex, undefined);
+});
+
+test('aggregateDevices drops week usage once a device week window has ended', () => {
+  const aggregate = aggregateDevices([staleSnapshotDevice()], 10 * 60 * 1000, Date.parse('2026-06-26T05:00:00.000Z'));
+  assert.equal(aggregate.periods.week.totalTokens, 0);
+  assert.equal(aggregate.periods.week.clients.codex, undefined);
 });
 
 test('aggregateDevices keeps allTime from a device whose today window has ended', () => {
@@ -733,6 +741,7 @@ test('aggregateDevices drops month once the device month window has ended', () =
     receivedAt: '2026-05-30T05:00:00.000Z',
     periodWindows: {
       today: { key: '2026-05-30', endsAt: '2026-05-31T00:00:00.000Z' },
+      week: { key: '2026-05-30', endsAt: '2026-05-31T00:00:00.000Z' },
       month: { key: '2026-05', endsAt: '2026-06-01T00:00:00.000Z' }
     }
   });
@@ -748,11 +757,16 @@ test('aggregateDevices keeps today for an offline-but-same-day device (window no
     // 20 minutes old: stale by the 10-minute threshold, but today has not rolled over
     updatedAt: '2026-06-26T04:40:00.000Z',
     receivedAt: '2026-06-26T04:40:00.000Z',
-    periodWindows: { today: { key: '2026-06-26', endsAt: '2026-06-27T00:00:00.000Z' } },
-    today: { totalTokens: 500 }
+    periodWindows: {
+      today: { key: '2026-06-26', endsAt: '2026-06-27T00:00:00.000Z' },
+      week: { key: '2026-06-26', endsAt: '2026-06-27T00:00:00.000Z' }
+    },
+    today: { totalTokens: 500 },
+    week: { totalTokens: 700 }
   };
   const aggregate = aggregateDevices([device], 10 * 60 * 1000, now);
   assert.equal(aggregate.periods.today.totalTokens, 500);
+  assert.equal(aggregate.periods.week.totalTokens, 700);
 });
 
 test('aggregateDevices keeps today across UTC midnight when device local day is unchanged', () => {
@@ -763,24 +777,31 @@ test('aggregateDevices keeps today across UTC midnight when device local day is 
     deviceId: 'tw-mac',
     updatedAt: '2026-06-26T18:00:00.000Z',
     receivedAt: '2026-06-26T18:00:00.000Z',
-    periodWindows: { today: { key: '2026-06-27', endsAt: '2026-06-27T16:00:00.000Z' } },
-    today: { totalTokens: 123 }
+    periodWindows: {
+      today: { key: '2026-06-27', endsAt: '2026-06-27T16:00:00.000Z' },
+      week: { key: '2026-06-27', endsAt: '2026-06-27T16:00:00.000Z' }
+    },
+    today: { totalTokens: 123 },
+    week: { totalTokens: 456 }
   };
   const aggregate = aggregateDevices([device], 10 * 60 * 1000, Date.parse('2026-06-27T02:00:00.000Z'));
   assert.equal(aggregate.periods.today.totalTokens, 123);
+  assert.equal(aggregate.periods.week.totalTokens, 456);
 });
 
 test('aggregateDevices falls back to UTC-day compare for old agents without periodWindows', () => {
   const dropped = aggregateDevices([{
     deviceId: 'old', updatedAt: '2026-06-21T05:00:00.000Z', receivedAt: '2026-06-21T05:00:00.000Z',
-    today: { totalTokens: 99 }, allTime: { totalTokens: 99 }
+    today: { totalTokens: 99 }, week: { totalTokens: 99 }, allTime: { totalTokens: 99 }
   }], 10 * 60 * 1000, Date.parse('2026-06-26T05:00:00.000Z'));
   assert.equal(dropped.periods.today.totalTokens, 0);
+  assert.equal(dropped.periods.week.totalTokens, 0);
   assert.equal(dropped.periods.allTime.totalTokens, 99);
 
   const kept = aggregateDevices([{
     deviceId: 'old2', updatedAt: '2026-06-26T05:00:00.000Z', receivedAt: '2026-06-26T05:00:00.000Z',
-    today: { totalTokens: 7 }
+    today: { totalTokens: 7 }, week: { totalTokens: 8 }
   }], 10 * 60 * 1000, Date.parse('2026-06-26T06:00:00.000Z'));
   assert.equal(kept.periods.today.totalTokens, 7);
+  assert.equal(kept.periods.week.totalTokens, 8);
 });

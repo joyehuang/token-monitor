@@ -1,8 +1,8 @@
 'use strict';
 
-// Watch-triggered ticks scan only --today and derive month/allTime exactly from
+// Watch-triggered ticks scan only --today and derive week/month/allTime exactly from
 // the last full-scan anchor (issue #15 follow-up): one tokscale spawn per watch
-// tick instead of three, with no loss of accuracy.
+// tick instead of four, with no loss of accuracy.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -68,6 +68,7 @@ test('collectUsageOnce with a valid anchor runs a single --today scan and derive
     const anchor = {
       dateKey: localTodayKey(),
       today: { ...emptyPeriod(), totalTokens: 30, clients: { claude: 30 } },
+      week: { ...emptyPeriod(), totalTokens: 80, clients: { claude: 80 } },
       month: { ...emptyPeriod(), totalTokens: 100, clients: { claude: 100 } },
       allTime: { ...emptyPeriod(), totalTokens: 1000, clients: { claude: 1000 } }
     };
@@ -76,6 +77,7 @@ test('collectUsageOnce with a valid anchor runs a single --today scan and derive
     assert.equal(calls.length, 1);
     assert.ok(calls[0].includes('--today'));
     assert.equal(summary.today.totalTokens, 50);
+    assert.equal(summary.week.totalTokens, 100);
     assert.equal(summary.month.totalTokens, 120);
     assert.equal(summary.allTime.totalTokens, 1020);
     assert.equal(summary.month.clients.claude, 120);
@@ -93,9 +95,9 @@ test('collectUsageOnce ignores a stale anchor from a previous day and runs the f
   try {
     const { collectUsageOnce } = freshCollector();
     const { emptyPeriod } = require('../../src/shared/usage');
-    const anchor = { dateKey: '2020-01-01', today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
+    const anchor = { dateKey: '2020-01-01', today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
     await collectUsageOnce({ ...baseOptions, todayOnlyAnchor: anchor });
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
   } finally {
     childProcess.spawn = originalSpawn;
     delete require.cache[collectorPath];
@@ -126,19 +128,20 @@ test('startCollector: watch ticks reuse the full-scan anchor, manual ticks resca
 
     await waitForUpdates(updates, 1);
     const fullScans = calls.length;
-    assert.equal(fullScans, 3);
+    assert.equal(fullScans, 4);
 
     await handle.tick('watch:change:file.jsonl', { todayOnly: true });
     await waitForUpdates(updates, 2);
     assert.equal(calls.length, fullScans + 1);
     // Same fake data both rounds: delta is zero, broader periods match the anchor.
+    assert.equal(updates[1].summary.week.totalTokens, updates[0].summary.week.totalTokens);
     assert.equal(updates[1].summary.month.totalTokens, updates[0].summary.month.totalTokens);
     assert.equal(updates[1].summary.allTime.totalTokens, updates[0].summary.allTime.totalTokens);
     assert.equal(updates[1].summary.today.totalTokens, 50);
 
     await handle.tick('manual');
     await waitForUpdates(updates, 3);
-    assert.equal(calls.length, fullScans + 1 + 3);
+    assert.equal(calls.length, fullScans + 1 + 4);
 
     handle.stop();
   } finally {

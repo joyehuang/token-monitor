@@ -1,6 +1,6 @@
 'use strict';
 
-const PERIODS = ['today', 'month', 'allTime'];
+const PERIODS = ['today', 'week', 'month', 'allTime'];
 const { aggregateLimits, normalizeLimitsSummary } = require('./limits');
 const { coerceHistory, mergeHistories } = require('./history');
 const TOKEN_KEYS = ['totalTokens', 'total_tokens', 'totalTokenCount', 'total_token_count', 'tokens', 'tokenCount', 'token_count'];
@@ -201,11 +201,12 @@ function utcDayKey(date) {
   return `${utcMonthKey(date)}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
 
-// today/month are wall-clock windows: the device stamps each with the UTC
-// instant it ends (next local midnight / next month start, computed in the
-// device's own timezone). The hub expires a frozen snapshot with nowMs >= endsAt
-// so an offline device's stale "today" stops counting once its day rolls over.
-const WINDOW_PERIODS = ['today', 'month'];
+// today/week/month are wall-clock windows: the device stamps each with the UTC
+// instant it ends (next local midnight for day/week, next local month start for
+// month, computed in the device's own timezone). The hub expires a frozen
+// snapshot with nowMs >= endsAt so stale windows stop counting once they roll
+// over.
+const WINDOW_PERIODS = ['today', 'week', 'month'];
 
 function normalizePeriodWindows(value) {
   if (!value || typeof value !== 'object') return null;
@@ -563,6 +564,7 @@ function shouldPreservePeriod(periodName, existingRecord, incomingRecord) {
   const incomingDate = recordDate(incomingRecord);
   if (!existingDate || !incomingDate) return false;
   if (periodName === 'today') return utcDayKey(existingDate) === utcDayKey(incomingDate);
+  if (periodName === 'week') return utcDayKey(existingDate) === utcDayKey(incomingDate);
   if (periodName === 'month') return utcMonthKey(existingDate) === utcMonthKey(incomingDate);
   return false;
 }
@@ -730,7 +732,7 @@ function mergePeriods(...periods) {
   return target;
 }
 
-// True when a device's today/month snapshot belongs to a window that has
+// True when a device's today/week/month snapshot belongs to a window that has
 // already ended, so it must not be summed into the live aggregate. Uses the
 // device-local endsAt when present; old agents without periodWindows fall back
 // to a best-effort UTC day/month comparison against the snapshot timestamp.
@@ -746,6 +748,7 @@ function isPeriodExpired(record, periodName, nowMs) {
   if (!recordedAt) return false;
   const nowDate = new Date(nowMs);
   if (periodName === 'today') return utcDayKey(recordedAt) !== utcDayKey(nowDate);
+  if (periodName === 'week') return utcDayKey(recordedAt) !== utcDayKey(nowDate);
   if (periodName === 'month') return utcMonthKey(recordedAt) !== utcMonthKey(nowDate);
   return false;
 }

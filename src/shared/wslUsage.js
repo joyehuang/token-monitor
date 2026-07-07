@@ -113,7 +113,7 @@ function defaultExec(cmd, args) {
 }
 
 function emptyWslBundle() {
-  return { today: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
+  return { today: emptyPeriod(), week: emptyPeriod(), month: emptyPeriod(), allTime: emptyPeriod() };
 }
 
 // Install-proof gate: reg.exe is read-only and cannot trigger a WSL install. If
@@ -228,9 +228,11 @@ async function collectWslUsage(options = {}, deps = {}) {
     try {
       // Serial on purpose (issue #15): never run these concurrently.
       const todayJson = await runTokscale({ clients: homeClientsCsv, flags: ['--today', '--home', home], commandTimeoutMs });
+      const weekJson = await runTokscale({ clients: homeClientsCsv, flags: ['--week', '--home', home], commandTimeoutMs });
       const monthJson = await runTokscale({ clients: homeClientsCsv, flags: ['--month', '--home', home], commandTimeoutMs });
       const allTimeJson = await runTokscale({ clients: homeClientsCsv, flags: ['--since', allTimeSince, '--home', home], commandTimeoutMs });
       bundle.today = mergePeriods(bundle.today, extractUsageFromTokscale(todayJson));
+      bundle.week = mergePeriods(bundle.week, extractUsageFromTokscale(weekJson));
       bundle.month = mergePeriods(bundle.month, extractUsageFromTokscale(monthJson));
       bundle.allTime = mergePeriods(bundle.allTime, extractUsageFromTokscale(allTimeJson));
     } catch (error) {

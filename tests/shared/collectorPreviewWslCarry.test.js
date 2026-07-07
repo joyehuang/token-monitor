@@ -1,9 +1,9 @@
 'use strict';
 
 // Regression: during a warm full scan the progressive preview must keep the
-// frozen WSL contribution in BOTH today and month. The partials from
+// frozen WSL contribution in today, week, and month. The partials from
 // collectUsageOnce are host-only (WSL is merged later), so without carrying the
-// previous tick's wslAnchor the today/month cards would briefly drop their WSL
+// previous tick's wslAnchor the today/week/month cards would briefly drop their WSL
 // usage until the final update. allTime and clientStatus are never part of a
 // preview (carried forward in main.js), so they must not appear in one.
 
@@ -26,34 +26,40 @@ const { emptyPeriod } = require('../../src/shared/usage');
 test('wslPeriodsForPreview gates the frozen WSL snapshot by day and month', () => {
   const anchor = {
     today: { ...emptyPeriod(), totalTokens: 10 },
+    week: { ...emptyPeriod(), totalTokens: 20 },
     month: { ...emptyPeriod(), totalTokens: 30 },
     allTime: { ...emptyPeriod(), totalTokens: 100 }
   };
 
-  // Same day (and month): both today and month are valid to merge.
+  // Same day (and month): today, week, and month are valid to merge.
   let r = wslPeriodsForPreview(anchor, '2026-06-23', '2026-06-23');
   assert.equal(r.today, anchor.today);
+  assert.equal(r.week, anchor.week);
   assert.equal(r.month, anchor.month);
 
-  // Cross day, same month: today must drop, month still valid.
+  // Cross day, same month: today/week must drop, month still valid.
   r = wslPeriodsForPreview(anchor, '2026-06-22', '2026-06-23');
   assert.equal(r.today, null);
+  assert.equal(r.week, null);
   assert.equal(r.month, anchor.month);
 
-  // Cross month: both drop.
+  // Cross month: all rolling windows drop.
   r = wslPeriodsForPreview(anchor, '2026-05-31', '2026-06-01');
   assert.equal(r.today, null);
+  assert.equal(r.week, null);
   assert.equal(r.month, null);
 
-  // No anchor: both null, never throws.
+  // No anchor: all null, never throws.
   r = wslPeriodsForPreview(null, '2026-06-23', '2026-06-23');
   assert.equal(r.today, null);
+  assert.equal(r.week, null);
   assert.equal(r.month, null);
 });
 
 // Host-only tokscale results per period (totalTokens = input + output).
 function hostScan({ flags }) {
   if (flags.includes('--today')) return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 100, output: 0, cost: 1 }] };
+  if (flags.includes('--week')) return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 200, output: 0, cost: 2 }] };
   if (flags.includes('--month')) return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 300, output: 0, cost: 3 }] };
   return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 1000, output: 0, cost: 10 }] };
 }
@@ -61,6 +67,7 @@ function hostScan({ flags }) {
 function wslBundle() {
   return {
     today: { ...emptyPeriod(), totalTokens: 10, clients: { claude: 10 } },
+    week: { ...emptyPeriod(), totalTokens: 20, clients: { claude: 20 } },
     month: { ...emptyPeriod(), totalTokens: 30, clients: { claude: 30 } },
     allTime: { ...emptyPeriod(), totalTokens: 100, clients: { claude: 100 } }
   };
@@ -75,7 +82,7 @@ function waitForUpdates(updates, count) {
   });
 }
 
-test('warm progressive preview keeps the frozen WSL contribution in today and month', async () => {
+test('warm progressive preview keeps the frozen WSL contribution in today, week, and month', async () => {
   const previews = [];
   const updates = [];
   const handle = startCollector({
@@ -103,27 +110,37 @@ test('warm progressive preview keeps the frozen WSL contribution in today and mo
     assert.equal(cold[0].today.totalTokens, 100, 'cold preview today is host-only (no WSL anchor yet)');
 
     // Second (warm) tick: previews must merge the frozen WSL snapshot captured on
-    // the first tick into today and month.
+    // the first tick into today, week, and month.
     const before = previews.length;
     await handle.tick('manual');
     await waitForUpdates(updates, 2);
     const warm = previews.slice(before);
-    assert.equal(warm.length, 2, 'warm full tick emits two previews (today, then today+month)');
+    assert.equal(warm.length, 3, 'warm full tick emits three previews (today, then today+week, then today+week+month)');
 
     // today-stage preview
     assert.equal(warm[0].today.totalTokens, 110, 'warm today carries WSL (host 100 + WSL 10)');
+    assert.equal('week' in warm[0], false, 'today-stage preview omits week');
     assert.equal('month' in warm[0], false, 'today-stage preview omits month');
     assert.equal('allTime' in warm[0], false, 'preview never carries allTime');
     assert.equal('clientStatus' in warm[0], false, 'preview never carries clientStatus');
 
-    // month-stage preview
-    assert.equal(warm[1].today.totalTokens, 110, 'warm today still carries WSL after the month scan');
-    assert.equal(warm[1].month.totalTokens, 330, 'warm month carries WSL (host 300 + WSL 30)');
+    // week-stage preview
+    assert.equal(warm[1].today.totalTokens, 110, 'warm today still carries WSL after the week scan');
+    assert.equal(warm[1].week.totalTokens, 220, 'warm week carries WSL (host 200 + WSL 20)');
+    assert.equal('month' in warm[1], false, 'week-stage preview omits month');
     assert.equal('allTime' in warm[1], false, 'preview never carries allTime');
     assert.equal('clientStatus' in warm[1], false, 'preview never carries clientStatus');
 
-    // Final update is complete: today/month/allTime all include WSL.
+    // month-stage preview
+    assert.equal(warm[2].today.totalTokens, 110, 'warm today still carries WSL after the month scan');
+    assert.equal(warm[2].week.totalTokens, 220, 'warm week still carries WSL after the month scan');
+    assert.equal(warm[2].month.totalTokens, 330, 'warm month carries WSL (host 300 + WSL 30)');
+    assert.equal('allTime' in warm[2], false, 'preview never carries allTime');
+    assert.equal('clientStatus' in warm[2], false, 'preview never carries clientStatus');
+
+    // Final update is complete: today/week/month/allTime all include WSL.
     assert.equal(updates[1].today.totalTokens, 110, 'final today = host 100 + WSL 10');
+    assert.equal(updates[1].week.totalTokens, 220, 'final week = host 200 + WSL 20');
     assert.equal(updates[1].month.totalTokens, 330, 'final month = host 300 + WSL 30');
     assert.equal(updates[1].allTime.totalTokens, 1100, 'final allTime = host 1000 + WSL 100');
   } finally {

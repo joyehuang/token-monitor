@@ -515,21 +515,21 @@ test('a watch event during an in-flight tick re-arms the debounce instead of coa
       onUpdate: (_summary, reason) => updates.push(reason)
     });
 
-    // Initial interval tick: full serial scan (3 spawns).
+    // Initial interval tick: full serial scan (4 spawns).
     await waitForCondition(() => updates.length === 1);
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
     assert.ok(watchHandler, 'watcher handler captured');
 
     // Slow ticks down so the second watch event lands while one is in flight.
     spawnDelayMs = 150;
     watchHandler('change', '/fake/session.jsonl');
-    await waitForCondition(() => calls.length === 4);
+    await waitForCondition(() => calls.length === 5);
     watchHandler('change', '/fake/session.jsonl');
 
     await waitForCondition(() => updates.length === 3);
     // Re-armed tick stays a today-only single scan; the old coalesce path
-    // would have run a full 3-scan tick with reason 'coalesced'.
-    assert.equal(calls.length, 5);
+    // would have run a full 4-scan tick with reason 'coalesced'.
+    assert.equal(calls.length, 6);
     assert.ok(!updates.includes('coalesced'), `unexpected coalesced tick in: ${updates.join(', ')}`);
   } finally {
     if (handle) handle.stop();

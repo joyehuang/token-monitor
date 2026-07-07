@@ -78,9 +78,10 @@ test('listRunningWslDistros returns [] when wsl.exe throws', () => {
   assert.deepEqual(out, []);
 });
 
-test('emptyWslBundle has three empty periods', () => {
+test('emptyWslBundle has four empty periods', () => {
   const b = emptyWslBundle();
   assert.equal(b.today.totalTokens, 0);
+  assert.equal(b.week.totalTokens, 0);
   assert.equal(b.month.totalTokens, 0);
   assert.equal(b.allTime.totalTokens, 0);
 });
@@ -171,7 +172,7 @@ function entriesJson(tokens) {
 function tokscaleStub(map) {
   return async ({ flags }) => {
     const home = flags[flags.indexOf('--home') + 1];
-    const period = flags.includes('--today') ? 'today' : flags.includes('--month') ? 'month' : 'allTime';
+    const period = flags.includes('--today') ? 'today' : flags.includes('--week') ? 'week' : flags.includes('--month') ? 'month' : 'allTime';
     return entriesJson(map[home][period]);
   };
 }
@@ -237,7 +238,7 @@ test('collectWslUsage passes a non-gated client through regardless of which root
     deps
   );
   const scans = seen['\\\\wsl$\\Ubuntu\\home\\alice'];
-  assert.ok(scans && scans.length === 3, 'transcripts-only home should still be scanned');
+  assert.ok(scans && scans.length === 4, 'transcripts-only home should still be scanned');
   for (const c of scans) {
     assert.ok(c.split(',').includes('claude'), `claude dropped: ${c}`);
     assert.ok(!c.split(',').includes('zed'), `zed should be gated out (no threads.db): ${c}`);
@@ -252,14 +253,15 @@ test('collectWslUsage sums two homes per period', async () => {
     existsSync: (p) => p.endsWith('\\.claude\\projects')
   };
   const map = {
-    '\\\\wsl$\\Ubuntu\\home\\alice': { today: 10, month: 100, allTime: 1000 },
-    '\\\\wsl$\\Ubuntu\\home\\bob': { today: 5, month: 50, allTime: 500 }
+    '\\\\wsl$\\Ubuntu\\home\\alice': { today: 10, week: 70, month: 100, allTime: 1000 },
+    '\\\\wsl$\\Ubuntu\\home\\bob': { today: 5, week: 35, month: 50, allTime: 500 }
   };
   const { bundle } = await collectWslUsage(
     { clients: 'claude', allTimeSince: '2025-01-01', commandTimeoutMs: 1000, runTokscale: tokscaleStub(map) },
     deps
   );
   assert.equal(bundle.today.totalTokens, 15);
+  assert.equal(bundle.week.totalTokens, 105);
   assert.equal(bundle.month.totalTokens, 150);
   assert.equal(bundle.allTime.totalTokens, 1500);
   assert.deepEqual(bundle.today.clients, { claude: 15 });

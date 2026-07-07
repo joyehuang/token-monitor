@@ -153,16 +153,16 @@ function localTodayKey(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
-// Stamp each posted snapshot with the UTC instant its today/month windows end
-// (next local midnight / next month start, in this device's timezone). The hub
-// uses these to expire a frozen snapshot once it goes offline past a day/month
-// boundary, instead of counting stale "today" data forever (issue #37).
+// Stamp each posted snapshot with the UTC instant its today/week/month windows
+// end. `week` is tokscale's rolling last-7-days window, so it rolls at local
+// midnight just like `today`.
 function computePeriodWindows(now = new Date()) {
   const startOfNextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
   const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   return {
     today: { key: localTodayKey(now), endsAt: startOfNextDay.toISOString() },
+    week: { key: localTodayKey(now), endsAt: startOfNextDay.toISOString() },
     month: { key: monthKey, endsAt: startOfNextMonth.toISOString() }
   };
 }
@@ -392,19 +392,21 @@ async function collectUsageOnce(options) {
   const platformValue = options.platform || process.platform;
   const normalizedClients = normalizeClientsCsv(clients);
   let today = emptyPeriod();
+  let week = emptyPeriod();
   let month = emptyPeriod();
   let allTime = emptyPeriod();
   const anchor = options.todayOnlyAnchor;
-  const anchorUsed = Boolean(anchor && anchor.dateKey === localTodayKey(collectedAt));
+  const anchorUsed = Boolean(anchor && anchor.week && anchor.dateKey === localTodayKey(collectedAt));
   if (normalizedClients) {
     await maybeSyncCursor(normalizedClients, options.logger);
     await maybeSyncAntigravity(normalizedClients, options.logger, options.homeDir || os.homedir());
     if (anchorUsed) {
       // Anchored tick (watch-triggered): every tokscale period scan costs the
       // same full load + filter, so scan only --today and update the broader
-      // windows exactly via applyPeriodDelta — one spawn instead of three.
+      // windows exactly via applyPeriodDelta — one spawn instead of four.
       const todayJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--today'], commandTimeoutMs });
       today = extractUsageFromTokscale(todayJson);
+      week = applyPeriodDelta(anchor.week, today, anchor.today);
       month = applyPeriodDelta(anchor.month, today, anchor.today);
       allTime = applyPeriodDelta(anchor.allTime, today, anchor.today);
     } else {
@@ -413,13 +415,16 @@ async function collectUsageOnce(options) {
       const todayJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--today'], commandTimeoutMs });
       today = extractUsageFromTokscale(todayJson);
       try { if (typeof options.onProgress === 'function') options.onProgress({ today, updatedAt: new Date().toISOString() }); } catch (_) {}
+      const weekJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--week'], commandTimeoutMs });
+      week = extractUsageFromTokscale(weekJson);
+      try { if (typeof options.onProgress === 'function') options.onProgress({ today, week, updatedAt: new Date().toISOString() }); } catch (_) {}
       const monthJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--month'], commandTimeoutMs });
       month = extractUsageFromTokscale(monthJson);
-      try { if (typeof options.onProgress === 'function') options.onProgress({ today, month, updatedAt: new Date().toISOString() }); } catch (_) {}
+      try { if (typeof options.onProgress === 'function') options.onProgress({ today, week, month, updatedAt: new Date().toISOString() }); } catch (_) {}
       const allTimeJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--since', allTimeSince], commandTimeoutMs });
       allTime = extractUsageFromTokscale(allTimeJson);
     }
-    applySessionTimestamps({ today, month, allTime }, options.homeDir || os.homedir());
+    applySessionTimestamps({ today, week, month, allTime }, options.homeDir || os.homedir());
   }
 
   // WSL contribution (Windows only; no-op elsewhere). Full tick scans running WSL
@@ -433,7 +438,7 @@ async function collectUsageOnce(options) {
   // 2. wslAnchor (watch anchored tick): reuse the frozen snapshot — WSL is heavy
   //    and watch ticks fire every few seconds.
   // 3. !anchorUsed (full scan): scan WSL as part of the complete rescan.
-  const windowsPeriods = { today, month, allTime };
+  const windowsPeriods = { today, week, month, allTime };
   let wslBundle = emptyWslBundle();
   let wslDetected = [];
   if (normalizedClients && options.wslScanEnabled !== false) {
@@ -462,6 +467,7 @@ async function collectUsageOnce(options) {
     }
   }
   today = mergePeriods(windowsPeriods.today, wslBundle.today);
+  week = mergePeriods(windowsPeriods.week, wslBundle.week);
   month = mergePeriods(windowsPeriods.month, wslBundle.month);
   allTime = mergePeriods(windowsPeriods.allTime, wslBundle.allTime);
 
@@ -508,6 +514,7 @@ async function collectUsageOnce(options) {
     wslStatus,
     periodWindows: computePeriodWindows(collectedAt),
     today,
+    week,
     month,
     allTime
   };
@@ -710,15 +717,17 @@ function deriveClientStatus(clientsCsv, allTimePeriod) {
 }
 
 // The frozen wslAnchor is only valid to merge into a preview period when it was
-// captured in the same calendar window: today only if the anchor is from today,
-// month only if from the same month. Otherwise a cross-day / cross-month full
-// scan would briefly add the previous period's WSL usage to the preview before
-// the final fresh scan corrects it. Returns the WSL period to merge, or null.
+// captured in the same calendar window: today/week only if the anchor is from
+// today, month only if from the same month. Otherwise a cross-day / cross-month
+// full scan would briefly add the previous period's WSL usage to the preview
+// before the final fresh scan corrects it. Returns the WSL period to merge, or
+// null.
 function wslPeriodsForPreview(wslAnchor, anchorDateKey, todayKey) {
-  if (!wslAnchor) return { today: null, month: null };
+  if (!wslAnchor) return { today: null, week: null, month: null };
   const key = anchorDateKey || '';
   return {
     today: key === todayKey ? wslAnchor.today : null,
+    week: key === todayKey ? wslAnchor.week : null,
     month: key.slice(0, 7) === todayKey.slice(0, 7) ? wslAnchor.month : null
   };
 }
@@ -730,7 +739,7 @@ function configFingerprint(clientsCsv, allTimeSince) {
 }
 
 // Force a full scan at least this often even when the anchor is otherwise
-// valid, so a long-running session periodically rescans month/allTime
+// valid, so a long-running session periodically rescans week/month/allTime
 // and picks up any changes that the delta-derivation might miss.
 const FULL_SCAN_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -748,7 +757,7 @@ function startCollector(options) {
   let pendingForceHistory = false;
   let lastHistoryAt = 0;
   // Last full-scan snapshot; lets watch ticks scan only --today and derive
-  // month/allTime exactly (applyPeriodDelta). Reset by every full tick.
+  // week/month/allTime exactly (applyPeriodDelta). Reset by every full tick.
   // anchor holds Windows-only periods; wslAnchor is the WSL contribution frozen
   // between full ticks (WSL is not scanned on watch ticks).
   let anchor = null;
@@ -762,16 +771,16 @@ function startCollector(options) {
   const watchers = [];
 
   // On-disk anchor: persist full-scan snapshots so the collector can reuse
-  // month/allTime across restarts. On the first interval tick the anchor is
+  // week/month/allTime across restarts. On the first interval tick the anchor is
   // valid for today and configFingerprint matches, only --today is scanned
-  // and month/allTime are derived via applyPeriodDelta.
+  // and week/month/allTime are derived via applyPeriodDelta.
   const anchorPath = path.join(sharedDataDir(), 'collector-anchor.json');
   try {
     const saved = readJson(anchorPath, null);
-    if (saved && saved.dateKey === localTodayKey()) {
+    if (saved && saved.dateKey === localTodayKey() && saved.week) {
       const fp = configFingerprint(clients, allTimeSince);
       if (saved.configFingerprint === fp) {
-        anchor = { dateKey: saved.dateKey, today: saved.today, month: saved.month, allTime: saved.allTime };
+        anchor = { dateKey: saved.dateKey, today: saved.today, week: saved.week || emptyPeriod(), month: saved.month, allTime: saved.allTime };
         // Don't restore a persisted WSL snapshot when WSL scanning is now off —
         // the configFingerprint intentionally ignores the toggle (host periods
         // stay valid), so without this gate a warm-scan preview would briefly
@@ -834,14 +843,19 @@ function startCollector(options) {
                 updatedAt: partial.updatedAt,
                 agentVersion, agentRuntime,
                 trackedClients: (clients || '').split(',').filter(Boolean),
-                // Merge the frozen WSL snapshot into today (as month/allTime do
+              // Merge the frozen WSL snapshot into today (as week/month/allTime do
                 // below) so the today card keeps its WSL contribution during a
                 // warm scan instead of dropping to host-only until the final tick.
                 today: wsl.today ? mergePeriods(partial.today, wsl.today) : partial.today
               };
-              // Only include month/allTime when actually scanned. During warm
+              // Only include week/month/allTime when actually scanned. During warm
               // full scans the main.js handler carries the previous values
               // forward for omitted fields, so these cards don't flash empty.
+              if (partial.week) {
+                preview.week = wsl.week
+                  ? mergePeriods(partial.week, wsl.week)
+                  : partial.week;
+              }
               if (partial.month) {
                 preview.month = wsl.month
                   ? mergePeriods(partial.month, wsl.month)
@@ -867,7 +881,7 @@ function startCollector(options) {
       });
       if (stopped) return;
       if (!anchored && captured) {
-        anchor = { dateKey: todayKey, today: captured.windowsPeriods.today, month: captured.windowsPeriods.month, allTime: captured.windowsPeriods.allTime };
+        anchor = { dateKey: todayKey, today: captured.windowsPeriods.today, week: captured.windowsPeriods.week, month: captured.windowsPeriods.month, allTime: captured.windowsPeriods.allTime };
         wslAnchor = captured.wslBundle;
         wslStatusAnchor = captured.wslStatus || null;
         lastFullScanAt = Date.now();
@@ -876,6 +890,7 @@ function startCollector(options) {
           fs.writeFileSync(anchorPath, JSON.stringify({
             dateKey: anchor.dateKey,
             today: anchor.today,
+            week: anchor.week,
             month: anchor.month,
             allTime: anchor.allTime,
             wslBundle: wslAnchor,

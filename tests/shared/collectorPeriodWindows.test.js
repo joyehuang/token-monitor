@@ -6,7 +6,7 @@ const test = require('node:test');
 const { computePeriodWindows, collectUsageOnce } = require('../../src/shared/collector');
 
 // endsAt is computed in the device's local time and serialized to UTC, so the
-// hub can expire a stale today/month snapshot with a plain nowMs < endsAt check.
+// hub can expire a stale today/week/month snapshot with a plain nowMs < endsAt check.
 // Assertions read back the local components so they hold regardless of the test
 // runner's timezone.
 test('computePeriodWindows returns next local midnight and next month start', () => {
@@ -14,6 +14,7 @@ test('computePeriodWindows returns next local midnight and next month start', ()
   const windows = computePeriodWindows(now);
 
   assert.equal(windows.today.key, '2026-06-27');
+  assert.equal(windows.week.key, '2026-06-27');
   assert.equal(windows.month.key, '2026-06');
 
   const todayEnd = new Date(windows.today.endsAt);
@@ -22,6 +23,9 @@ test('computePeriodWindows returns next local midnight and next month start', ()
   assert.equal(todayEnd.getDate(), 28);
   assert.equal(todayEnd.getHours(), 0);
   assert.equal(todayEnd.getMinutes(), 0);
+
+  const weekEnd = new Date(windows.week.endsAt);
+  assert.equal(weekEnd.getTime(), todayEnd.getTime());
 
   const monthEnd = new Date(windows.month.endsAt);
   assert.equal(monthEnd.getMonth(), 6); // July
@@ -32,6 +36,7 @@ test('computePeriodWindows returns next local midnight and next month start', ()
 test('computePeriodWindows wraps the month boundary at year end', () => {
   const windows = computePeriodWindows(new Date(2026, 11, 31, 23, 0, 0)); // local 2026-12-31 23:00
   assert.equal(windows.today.key, '2026-12-31');
+  assert.equal(windows.week.key, '2026-12-31');
   assert.equal(windows.month.key, '2026-12');
 
   const todayEnd = new Date(windows.today.endsAt);

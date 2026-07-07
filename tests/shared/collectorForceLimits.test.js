@@ -188,7 +188,7 @@ test('collectUsageOnce requests session-level tokscale grouping', async () => {
       limitsEnabled: false
     });
 
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
     for (const args of calls) {
       const groupIndex = args.indexOf('--group-by');
       assert.notEqual(groupIndex, -1);

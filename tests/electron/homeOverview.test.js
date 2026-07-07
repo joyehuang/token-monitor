@@ -48,6 +48,7 @@ test('Home activity heatmap is a scaled copy of the dashboard heatmap', () => {
     assert.equal(fill(css, homeSelector), fill(dashboardCss, dashboardSelector));
   }
   assert.doesNotMatch(rule(css, '.home-activity-scroll'), /padding-block/);
+  assert.match(rule(css, '.home-activity-canvas .heat:hover'), /filter:\s*url\("#homeActivityHeatGlow"\)/);
   assert.match(rule(css, '.home-activity-canvas .heat-month'), /fill:\s*rgba\(var\(--line-rgb\), 0\.5\)/);
 });
 

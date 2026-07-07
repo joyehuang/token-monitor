@@ -4,7 +4,7 @@
 // node:test-able and its signatures physically exclude devices/limits (privacy).
 
 const BOM = '﻿';
-const PERIODS = ['today', 'month', 'allTime'];
+const PERIODS = ['today', 'week', 'month', 'allTime'];
 const SNAPSHOT_COLUMNS = ['period', 'dimension', 'name', 'tokens', 'cost_usd'];
 const DAILY_COLUMNS = ['date', 'tool', 'tokens', 'cost_usd'];
 // The complete set of generated filenames — the single source of truth the
@@ -89,6 +89,7 @@ function renderExportJson({ periods, history, meta } = {}) {
     app: (meta && meta.app) || { name: 'token-monitor' },
     snapshot: {
       today: periodSnapshot(periods, 'today'),
+      week: periodSnapshot(periods, 'week'),
       month: periodSnapshot(periods, 'month'),
       allTime: periodSnapshot(periods, 'allTime')
     },
@@ -116,6 +117,7 @@ function exportSignature(periods, history) {
   return stableStringify({
     snapshot: {
       today: periodSnapshot(periods, 'today'),
+      week: periodSnapshot(periods, 'week'),
       month: periodSnapshot(periods, 'month'),
       allTime: periodSnapshot(periods, 'allTime')
     },
