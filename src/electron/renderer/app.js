@@ -2730,6 +2730,31 @@ function renderHomeTrendsModule() {
   return module;
 }
 
+function currentThemeIsLight() {
+  const resolved = themePresetsApi.mergeThemeColors(state.settings?.themeColors);
+  return themePresetsApi.isLightHex(resolved.bg);
+}
+
+function renderHomeThemeToggle() {
+  const isLight = currentThemeIsLight();
+  const targetPreset = isLight ? 'joyeDark' : 'joyeLight';
+  const label = t(isLight ? 'home.themeToggle.toDark' : 'home.themeToggle.toLight');
+  const toolbar = document.createElement('div');
+  toolbar.className = 'home-toolbar';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `home-theme-toggle ${isLight ? 'to-dark' : 'to-light'}`;
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.textContent = isLight ? '☾' : '☀';
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    void selectThemePreset(targetPreset);
+  });
+  toolbar.append(button);
+  return toolbar;
+}
+
 function renderHome() {
   if (!els.homePanel) return;
   // The previous scroller (and its ResizeObserver) is about to be replaced; drop the
@@ -2754,7 +2779,7 @@ function renderHome() {
     action.textContent = t('home.customize');
     action.addEventListener('click', openHomeSettings);
     empty.append(title, body, action);
-    els.homePanel.replaceChildren(empty);
+    els.homePanel.replaceChildren(renderHomeThemeToggle(), empty);
     return;
   }
   const nodes = moduleIds.map((id) => {
@@ -2764,7 +2789,7 @@ function renderHome() {
     if (id === 'model') return renderHomeModelModule(period);
     return renderHomeTrendsModule();
   });
-  els.homePanel.replaceChildren(...nodes);
+  els.homePanel.replaceChildren(renderHomeThemeToggle(), ...nodes);
   // setupHomeActivityScroller wires a ResizeObserver that applies the scroll position
   // post-layout, so no requestAnimationFrame guess is needed here.
 }
@@ -3263,6 +3288,7 @@ async function commitThemeColors(overrides) {
   applyThemeColors(overrides);
   buildAppearanceColorControls();
   renderSettingsSummaries();
+  renderHomeIfVisible();
   await saveSettings({ themeColors: overrides });
 }
 
