@@ -2743,7 +2743,7 @@ function syncThemeToggleButton() {
   els.themeToggleButton.dataset.targetPreset = targetPreset;
   els.themeToggleButton.title = label;
   els.themeToggleButton.setAttribute('aria-label', label);
-  els.themeToggleButton.textContent = isLight ? '☾' : '☀';
+  els.themeToggleButton.textContent = '';
   els.themeToggleButton.classList.toggle('is-light', isLight);
 }
 

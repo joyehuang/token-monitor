@@ -50,6 +50,7 @@
   const LIGHT_LINE_RGB = '24, 28, 36';
   const LIGHT_PANEL_RGB = '255, 255, 255';
   const LIGHT_SUNKEN_RGB = '188, 196, 206';
+  const LIGHT_CHART_RGB = '82, 82, 91';
 
   // Vendors shown in the vendor-colour list, tracked clients first. Vendors not
   // listed here but present in clientColors are appended after these, then the
@@ -170,6 +171,7 @@
     entries.push({ name: '--line-rgb', value: light ? LIGHT_LINE_RGB : null });
     entries.push({ name: '--panel-rgb', value: light ? LIGHT_PANEL_RGB : null });
     entries.push({ name: '--sunken-rgb', value: light ? LIGHT_SUNKEN_RGB : null });
+    entries.push({ name: '--chart-rgb', value: light ? LIGHT_CHART_RGB : null });
     entries.push({ name: 'color-scheme', value: light ? 'light' : null });
     return entries;
   }

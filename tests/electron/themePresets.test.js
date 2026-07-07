@@ -75,7 +75,7 @@ test('themeCssVarEntries flips the overlay/border system for light backgrounds',
 
   // Dark bg -> surface vars cleared to the dark :root defaults.
   const dark = byName(themeCssVarEntries({ bg: '#0b0c0e' }));
-  for (const name of ['--overlay-rgb', '--line-rgb', '--panel-rgb', '--sunken-rgb', 'color-scheme']) {
+  for (const name of ['--overlay-rgb', '--line-rgb', '--panel-rgb', '--sunken-rgb', '--chart-rgb', 'color-scheme']) {
     assert.equal(dark[name], null, `${name} should be cleared on a dark bg`);
   }
 
@@ -86,6 +86,7 @@ test('themeCssVarEntries flips the overlay/border system for light backgrounds',
   assert.equal(light['--line-rgb'], '24, 28, 36');
   assert.equal(light['--panel-rgb'], '255, 255, 255');
   assert.equal(light['--sunken-rgb'], '188, 196, 206');
+  assert.equal(light['--chart-rgb'], '82, 82, 91');
   assert.equal(light['color-scheme'], 'light');
 
   // No bg override resolves to the dark default, so no flip.

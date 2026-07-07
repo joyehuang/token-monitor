@@ -226,6 +226,9 @@ test('footer exposes a compact Joye light/dark toggle beside Settings', () => {
   assert.doesNotMatch(css, /\.home-toolbar/);
   assert.match(cssRule(css, '.theme-toggle-button'), /display:\s*inline-grid/);
   assert.match(cssRule(css, '.theme-toggle-button'), /color:\s*var\(--muted\)/);
+  assert.match(cssRule(css, '.theme-toggle-button::before'), /icons\/actions\/sun\.svg/);
+  assert.match(cssRule(css, '.theme-toggle-button.is-light::before'), /icons\/actions\/moon\.svg/);
+  assert.match(toggleBody, /themeToggleButton\.textContent = ''/);
   assert.match(i18n, /home\.themeToggle\.toLight/);
   assert.match(i18n, /home\.themeToggle\.toDark/);
 });
