@@ -18,6 +18,30 @@ Automated verification is `npm run verify` (= `npm run lint && npm test`); CI (`
 
 To dry-run the agent without posting: `node src/agent/agent.js --once --dry-run`.
 
+## Local fork workflow
+
+Use the standard fork remote names:
+
+- `origin` is the contributor fork, and is where local product changes are pushed.
+- `upstream` is the original `Javis603/token-monitor` repository, and is read-only unless you are a maintainer there.
+
+The local `main` branch is allowed to be the runnable fork version: small personal/product improvements can land there directly so `npm start` immediately shows the current fork behaviour. Do not park everyday runnable changes on throwaway Codex worktree branches. When upstream changes are needed, fetch and rebase the runnable branch:
+
+```bash
+git fetch upstream
+git rebase upstream/main
+git push --force-with-lease origin main
+```
+
+For changes intended as a clean upstream PR, create a focused branch from `upstream/main` and cherry-pick or re-apply only the relevant commits. Keep fork-only changes out of upstream PR branches.
+
+The Electron app does not hot-reload reliably. After code changes or branch switches, fully quit Token Monitor and restart it from the fixed checkout:
+
+```bash
+cd /Users/joye/Documents/code/token-monitor
+npm start
+```
+
 ## Architecture
 
 Three runtime entry points share a single `src/shared/` library:
