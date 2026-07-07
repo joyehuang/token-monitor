@@ -105,15 +105,16 @@ test('every preset is a full palette of valid hex for all four keys', () => {
 test('the Joye dark preset is first and equals the documented defaults', () => {
   assert.equal(THEME_PRESETS[0].id, 'joyeDark');
   assert.deepEqual(THEME_PRESETS[0].colors, DEFAULT_THEME);
+  assert.equal(DEFAULT_THEME.accent, '#b4ebfd');
 });
 
 test('Joye light preset mirrors the site light palette', () => {
   const light = THEME_PRESETS.find((preset) => preset.id === 'joyeLight');
   assert.deepEqual(light.colors, {
-    accent: '#659eb9',
+    accent: '#517e94',
     bg: '#fcfcfd',
     text: '#08080a',
-    muted: '#47474f'
+    muted: '#45454a'
   });
 });
 

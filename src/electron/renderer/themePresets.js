@@ -28,7 +28,7 @@
   // fork follows joyehuang.me's dark palette by default.
   // bg #0b0b10 == rgb(11, 11, 16) (the --glass-rgb default).
   const DEFAULT_THEME = {
-    accent: '#659eb9',
+    accent: '#b4ebfd',
     bg: '#0b0b10',
     text: '#fafafa',
     muted: '#bfc0c7'
@@ -40,7 +40,7 @@
   // The light preset relies on the overlay flip in themeCssVarEntries().
   const THEME_PRESETS = [
     { id: 'joyeDark', colors: { ...DEFAULT_THEME } },
-    { id: 'joyeLight', colors: { accent: '#659eb9', bg: '#fcfcfd', text: '#08080a', muted: '#47474f' } }
+    { id: 'joyeLight', colors: { accent: '#517e94', bg: '#fcfcfd', text: '#08080a', muted: '#45454a' } }
   ];
 
   // Surface RGBs used when the background is light, so overlays/borders read as

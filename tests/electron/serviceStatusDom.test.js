@@ -209,22 +209,23 @@ test('Home module jump icons align optically with their titles', () => {
   assert.match(cssRule(css, '.home-module-jump'), /transform:\s*translateY\(-1px\)/);
 });
 
-test('Home exposes a compact sticky Joye light/dark toggle', () => {
+test('footer exposes a compact Joye light/dark toggle beside Settings', () => {
+  const html = readRendererFile('index.html');
   const app = readRendererFile('app.js');
   const css = readRendererFile('styles.css');
   const i18n = readRendererFile('i18n.js');
-  const toggleBody = functionBody(app, 'renderHomeThemeToggle', 'renderHome');
-  const renderHomeBody = functionBody(app, 'renderHome', 'render');
+  const toggleBody = functionBody(app, 'syncThemeToggleButton', 'renderHome');
+  assert.match(html, /id="footerActionSlot"[\s\S]*id="themeToggleButton"[\s\S]*id="settingsButton"/);
   assert.match(toggleBody, /currentThemeIsLight\(\)/);
   assert.match(toggleBody, /const targetPreset = isLight \? 'joyeDark' : 'joyeLight'/);
-  assert.match(toggleBody, /button\.setAttribute\('aria-label', label\)/);
-  assert.match(toggleBody, /selectThemePreset\(targetPreset\)/);
-  assert.match(renderHomeBody, /replaceChildren\(renderHomeThemeToggle\(\), \.\.\.nodes\)/);
-  assert.match(app, /renderHomeIfVisible\(\);\s*\n\s*await saveSettings\(\{ themeColors: overrides \}\)/);
-  assert.match(cssRule(css, '.home-toolbar'), /position:\s*sticky/);
-  assert.match(cssRule(css, '.home-toolbar'), /justify-content:\s*flex-end/);
-  assert.match(cssRule(css, '.home-theme-toggle'), /width:\s*26px/);
-  assert.match(cssRule(css, '.home-theme-toggle'), /border-radius:\s*50%/);
+  assert.match(toggleBody, /themeToggleButton\.setAttribute\('aria-label', label\)/);
+  assert.match(app, /themeToggleButton\?\.addEventListener\('click'/);
+  assert.match(app, /selectThemePreset\(els\.themeToggleButton\.dataset\.targetPreset/);
+  assert.match(app, /syncThemeToggleButton\(\);\s*\n\s*await saveSettings\(\{ themeColors: overrides \}\)/);
+  assert.doesNotMatch(app, /renderHomeThemeToggle/);
+  assert.doesNotMatch(css, /\.home-toolbar/);
+  assert.match(cssRule(css, '.theme-toggle-button'), /display:\s*inline-grid/);
+  assert.match(cssRule(css, '.theme-toggle-button'), /color:\s*var\(--muted\)/);
   assert.match(i18n, /home\.themeToggle\.toLight/);
   assert.match(i18n, /home\.themeToggle\.toDark/);
 });
