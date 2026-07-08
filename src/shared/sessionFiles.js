@@ -34,18 +34,41 @@ function codexSessionFile(home, sessionId) {
   try { return fs.statSync(filePath).isFile() ? filePath : ''; } catch (_) { return ''; }
 }
 
-function resolveSessionFile(client, sessionId, home) {
-  const id = String(sessionId || '');
-  if (!id) return '';
-  if (client === 'claude') {
-    return findSessionFiles(path.join(home, '.claude', 'projects'), [id]).get(id) || '';
-  }
-  if (client === 'codex') {
-    const direct = codexSessionFile(home, id);
-    if (direct) return direct;
-    return findSessionFiles(path.join(home, '.codex', 'sessions'), [id]).get(id) || '';
-  }
-  return '';
+function jsonlFilesInDir(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return []; }
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
+    .map((entry) => path.join(dir, entry.name))
+    .sort((a, b) => a.localeCompare(b));
 }
 
-module.exports = { findSessionFiles, codexSessionFile, resolveSessionFile };
+function claudeSessionFiles(home, sessionId) {
+  const id = String(sessionId || '');
+  if (!id) return [];
+  const mainFile = findSessionFiles(path.join(home, '.claude', 'projects'), [id]).get(id) || '';
+  if (!mainFile) return [];
+  const files = [mainFile];
+  const sessionDir = path.join(path.dirname(mainFile), path.basename(mainFile, '.jsonl'));
+  files.push(...jsonlFilesInDir(path.join(sessionDir, 'subagents')));
+  return Array.from(new Set(files));
+}
+
+function resolveSessionFiles(client, sessionId, home) {
+  const id = String(sessionId || '');
+  if (!id) return [];
+  if (client === 'claude') return claudeSessionFiles(home, id);
+  if (client === 'codex') {
+    const direct = codexSessionFile(home, id);
+    if (direct) return [direct];
+    const found = findSessionFiles(path.join(home, '.codex', 'sessions'), [id]).get(id) || '';
+    return found ? [found] : [];
+  }
+  return [];
+}
+
+function resolveSessionFile(client, sessionId, home) {
+  return resolveSessionFiles(client, sessionId, home)[0] || '';
+}
+
+module.exports = { findSessionFiles, codexSessionFile, resolveSessionFile, resolveSessionFiles };

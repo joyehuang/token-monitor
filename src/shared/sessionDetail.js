@@ -1,7 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
-const { resolveSessionFile } = require('./sessionFiles');
+const { resolveSessionFiles } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
 
 function num(value) {
@@ -222,6 +222,11 @@ function withinPeriod(timestamp, period, now) {
   if (period === 'total') return true;
   const date = new Date(timestamp || '');
   if (Number.isNaN(date.getTime())) return false;
+  if (period === 'week') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+    return date >= start && date < end;
+  }
   if (period === 'today') {
     return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
   }
@@ -264,6 +269,11 @@ function parseByClient(client, text) {
   return [];
 }
 
+function eventTimestampMs(event) {
+  const date = new Date(event?.timestamp || '');
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
 function totalsOf(exchanges, sessionCost) {
   const totalTokens = exchanges.reduce((acc, ex) => acc + ex.tokens.total, 0);
   const turnCount = exchanges.reduce((acc, ex) => acc + ex.turnCount, 0);
@@ -292,14 +302,22 @@ function readOpenCodeSessionDetail({ sessionId, period = 'total', deps = {} }) {
 
 function readSessionDetail({ client, sessionId, period = 'total', sessionCost = 0, home, deps = {} }) {
   if (client === 'opencode') return readOpenCodeSessionDetail({ sessionId, period, deps });
-  const filePath = resolveSessionFile(client, sessionId, home);
-  if (!filePath) return { found: false, client, sessionId, period, exchanges: [], totals: totalsOf([], sessionCost) };
-  let text;
-  try { text = fs.readFileSync(filePath, 'utf8'); } catch (_) {
+  const filePaths = resolveSessionFiles(client, sessionId, home);
+  if (filePaths.length === 0) return { found: false, client, sessionId, period, exchanges: [], totals: totalsOf([], sessionCost) };
+  const texts = [];
+  for (const filePath of filePaths) {
+    try { texts.push(fs.readFileSync(filePath, 'utf8')); } catch (_) {}
+  }
+  if (texts.length === 0) {
     return { found: false, client, sessionId, period, exchanges: [], totals: totalsOf([], sessionCost) };
   }
-  const events = parseByClient(client, text);
-  const grouped = filterExchangesByPeriod(groupEvents(events), period, new Date());
+  const events = texts
+    .flatMap((text) => parseByClient(client, text))
+    .map((event, index) => ({ event, index }))
+    .sort((a, b) => eventTimestampMs(a.event) - eventTimestampMs(b.event) || a.index - b.index)
+    .map(({ event }) => event);
+  const now = new Date((deps.now || Date.now)());
+  const grouped = filterExchangesByPeriod(groupEvents(events), period, now);
   distributeCost(grouped, sessionCost);
   return { found: true, client, sessionId, period, exchanges: grouped, totals: totalsOf(grouped, sessionCost) };
 }

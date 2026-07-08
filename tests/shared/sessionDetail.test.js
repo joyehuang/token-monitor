@@ -184,6 +184,21 @@ test('filterExchangesByPeriod keeps only in-period turns and drops empties', () 
   assert.equal(all.length, 2);
 });
 
+test('filterExchangesByPeriod treats week as the rolling local 7-day window', () => {
+  const now = new Date(2026, 4, 30, 12, 0, 0);
+  const ex = groupEvents([
+    { kind: 'prompt', timestamp: new Date(2026, 4, 23, 23, 59, 59).toISOString(), text: 'old' },
+    turn(new Date(2026, 4, 23, 23, 59, 59).toISOString(), 900),
+    { kind: 'prompt', timestamp: new Date(2026, 4, 24, 0, 0, 0).toISOString(), text: 'edge' },
+    turn(new Date(2026, 4, 24, 0, 0, 0).toISOString(), 100),
+    { kind: 'prompt', timestamp: new Date(2026, 4, 30, 6, 0, 0).toISOString(), text: 'today' },
+    turn(new Date(2026, 4, 30, 6, 0, 0).toISOString(), 50)
+  ]);
+  const week = filterExchangesByPeriod(ex, 'week', now);
+  assert.equal(week.length, 2);
+  assert.equal(week.reduce((sum, row) => sum + row.tokens.total, 0), 150);
+});
+
 test('distributeCost splits session cost by token share and reconciles', () => {
   const ex = groupEvents([
     { kind: 'prompt', timestamp: '2026-05-30T06:00:01.000Z', text: 'Q1' },
@@ -209,6 +224,12 @@ function writeClaudeSession(home, sessionId, lines) {
   fs.writeFileSync(path.join(dir, `${sessionId}.jsonl`), lines.join('\n'));
 }
 
+function writeClaudeSubagent(home, sessionId, agentId, lines) {
+  const dir = path.join(home, '.claude', 'projects', '-proj', sessionId, 'subagents');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${agentId}.jsonl`), lines.join('\n'));
+}
+
 test('readSessionDetail resolves, parses, groups, and distributes cost', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-detail-'));
   const id = 'sess-1';
@@ -224,6 +245,31 @@ test('readSessionDetail resolves, parses, groups, and distributes cost', () => {
   assert.equal(detail.totals.totalTokens, 15);
   assert.ok(Math.abs(detail.totals.costUsd - 0.5) < 1e-9);
   assert.ok(Math.abs(detail.exchanges[0].costEstimate - 0.5) < 1e-9);
+});
+
+test('readSessionDetail includes Claude subagent transcript tokens', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-detail-'));
+  const id = 'sess-1';
+  writeClaudeSession(home, id, [
+    JSON.stringify({ type: 'user', timestamp: '2026-05-30T06:00:00.000Z', message: { role: 'user', content: 'main' } }),
+    JSON.stringify({ type: 'assistant', timestamp: '2026-05-30T06:00:01.000Z', message: { role: 'assistant', usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, content: [] } })
+  ]);
+  writeClaudeSubagent(home, id, 'agent-one', [
+    JSON.stringify({ type: 'user', timestamp: '2026-05-30T06:00:02.000Z', message: { role: 'user', content: 'sub' } }),
+    JSON.stringify({ type: 'assistant', timestamp: '2026-05-30T06:00:03.000Z', message: { role: 'assistant', usage: { input_tokens: 3, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, content: [] } })
+  ]);
+
+  const detail = readSessionDetail({
+    client: 'claude',
+    sessionId: id,
+    period: 'week',
+    sessionCost: 0.5,
+    home,
+    deps: { now: () => new Date('2026-05-30T12:00:00.000Z') }
+  });
+  assert.equal(detail.found, true);
+  assert.equal(detail.exchanges.length, 2);
+  assert.equal(detail.totals.totalTokens, 22);
 });
 
 test('readSessionDetail reports not found instead of throwing', () => {

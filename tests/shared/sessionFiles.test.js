@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { resolveSessionFile } = require('../../src/shared/sessionFiles');
+const { resolveSessionFile, resolveSessionFiles } = require('../../src/shared/sessionFiles');
 
 function tmpHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tm-home-'));
@@ -24,6 +24,20 @@ test('resolves a claude session file by walking projects', () => {
     const file = path.join(dir, 'abc-123.jsonl');
     fs.writeFileSync(file, '{}\n');
     assert.equal(resolveSessionFile('claude', 'abc-123', home), file);
+  } finally { cleanup(home); }
+});
+
+test('resolves claude session subagent transcripts alongside the main file', () => {
+  const home = tmpHome();
+  try {
+    const dir = path.join(home, '.claude', 'projects', '-some-project');
+    fs.mkdirSync(path.join(dir, 'abc-123', 'subagents'), { recursive: true });
+    const main = path.join(dir, 'abc-123.jsonl');
+    const subagent = path.join(dir, 'abc-123', 'subagents', 'agent-one.jsonl');
+    fs.writeFileSync(main, '{}\n');
+    fs.writeFileSync(subagent, '{}\n');
+    assert.deepEqual(resolveSessionFiles('claude', 'abc-123', home), [main, subagent]);
+    assert.equal(resolveSessionFile('claude', 'abc-123', home), main);
   } finally { cleanup(home); }
 });
 
