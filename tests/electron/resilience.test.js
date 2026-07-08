@@ -21,5 +21,6 @@ test('sync stats keep a remote cache for disconnected hubs', () => {
   assert.match(main, /remote-stats-cache\.json/);
   assert.match(main, /writeRemoteStatsCache\(lastRemoteStats\)/);
   assert.match(main, /const cachedStats = lastRemoteStats \|\| readRemoteStatsCache\(\)/);
-  assert.match(main, /return cachedStats/);
+  assert.match(main, /lastRemoteStats = mergeLocalCollectedDevice\(cachedStats\)/);
+  assert.match(main, /return lastRemoteStats/);
 });

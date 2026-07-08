@@ -1408,9 +1408,17 @@ function injectLocalDeviceStatus(stats) {
   return stats;
 }
 
+function mergeLocalCollectedDevice(stats) {
+  if (!stats || !lastCollectedDevice || !Array.isArray(stats.devices)) return stats;
+  const devices = stats.devices.filter((device) => device?.deviceId !== lastCollectedDevice.deviceId);
+  devices.push(lastCollectedDevice);
+  const staleAfterMs = Number(stats.staleAfterMs || 0);
+  return withHistoryPreview(aggregateDevices(devices, staleAfterMs), devices);
+}
+
 function sendPush(payload) {
   if (payload?.data?.stats) {
-    injectLocalDeviceStatus(payload.data.stats);
+    payload.data.stats = mergeLocalCollectedDevice(injectLocalDeviceStatus(payload.data.stats));
     if (mode === 'sync') {
       lastRemoteStats = payload.data.stats;
       writeRemoteStatsCache(lastRemoteStats);
@@ -2016,16 +2024,16 @@ async function fetchStats(options = {}) {
   try {
     const response = await fetch(url, { headers: secret ? { authorization: `Bearer ${secret}` } : {} });
     if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
-    const stats = injectLocalDeviceStatus(await response.json());
+    const stats = mergeLocalCollectedDevice(injectLocalDeviceStatus(await response.json()));
     lastRemoteStats = stats;
     writeRemoteStatsCache(lastRemoteStats);
     return stats;
   } catch (error) {
     const cachedStats = lastRemoteStats || readRemoteStatsCache();
     if (cachedStats) {
-      lastRemoteStats = cachedStats;
+      lastRemoteStats = mergeLocalCollectedDevice(cachedStats);
       sendStatus(false, classifyStreamFailure({ errorCode: error?.cause?.code || error?.code, message: error?.message }));
-      return cachedStats;
+      return lastRemoteStats;
     }
     throw error;
   }
