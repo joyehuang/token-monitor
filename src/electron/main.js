@@ -1312,6 +1312,10 @@ function startSyncCollector() {
         await postToHub(visibleSummary);
       } catch (error) {
         console.log(`[sync-collector] post failed: ${error.message}`);
+        const fallbackStats = syncFallbackStatsWithLocalDevice();
+        if (fallbackStats) {
+          sendPush({ event: 'stats', data: { type: 'stats', reason: 'sync-fallback', stats: fallbackStats, at: new Date().toISOString() } });
+        }
       }
     },
     onError: (error, reason) => console.log(`[sync-collector] ${reason}: ${error.message}`),
@@ -1414,6 +1418,13 @@ function mergeLocalCollectedDevice(stats) {
   devices.push(lastCollectedDevice);
   const staleAfterMs = Number(stats.staleAfterMs || 0);
   return withHistoryPreview(aggregateDevices(devices, staleAfterMs), devices);
+}
+
+function syncFallbackStatsWithLocalDevice() {
+  const cachedStats = lastRemoteStats || readRemoteStatsCache();
+  if (cachedStats) return mergeLocalCollectedDevice(cachedStats);
+  if (!lastCollectedDevice) return null;
+  return withHistoryPreview(aggregateDevices([lastCollectedDevice], 0), [lastCollectedDevice]);
 }
 
 function sendPush(payload) {
