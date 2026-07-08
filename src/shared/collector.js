@@ -16,7 +16,7 @@ const { hermesProfileWatchDirs, resolveHermesHome, tokscaleEnvFromSpawnArgs } = 
 const { parseGraphResult, normalizeHistory } = require('./history');
 const { collectLimitsOnce, createLimitsCollector } = require('./limitCollector');
 const cursorAuth = require('./cursorAuth');
-const { findSessionFiles, codexSessionFile } = require('./sessionFiles');
+const { findSessionFiles, codexSessionFile, codexArchivedSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
 
 function toUnpackedPath(p) {
@@ -262,12 +262,15 @@ function sessionTimestampMap(periods, home = os.homedir(), deps = {}) {
   const codexIds = byClient.get('codex') || new Set();
   const missingCodexIds = new Set();
   for (const sessionId of codexIds) {
-    const filePath = codexSessionFile(home, sessionId);
+    const filePath = codexSessionFile(home, sessionId) || codexArchivedSessionFile(home, sessionId);
     if (filePath) applyFile('codex', sessionId, filePath);
     else missingCodexIds.add(sessionId);
   }
   const codexFiles = findSessionFiles(path.join(home, '.codex', 'sessions'), missingCodexIds);
   for (const [sessionId, filePath] of codexFiles) applyFile('codex', sessionId, filePath);
+  const stillMissingCodexIds = new Set(Array.from(missingCodexIds).filter((sessionId) => !codexFiles.has(sessionId)));
+  const archivedCodexFiles = findSessionFiles(path.join(home, '.codex', 'archived_sessions'), stillMissingCodexIds);
+  for (const [sessionId, filePath] of archivedCodexFiles) applyFile('codex', sessionId, filePath);
 
   for (const ref of refs.values()) {
     const key = `${ref.client}:${ref.sessionId}`;
@@ -552,7 +555,7 @@ function clientWatchCandidates(clientsCsv) {
   const byClient = {};
   const add = (client, ...dirs) => { if (enabled.has(client)) byClient[client] = dirs; };
   add('claude', path.join(home, '.claude', 'projects'), path.join(home, '.claude', 'transcripts'));
-  add('codex', path.join(home, '.codex', 'sessions'));
+  add('codex', path.join(home, '.codex', 'sessions'), path.join(home, '.codex', 'archived_sessions'));
   const hermesHome = resolveHermesHome({ env: process.env, homeDir: home });
   add('hermes', hermesHome, ...hermesProfileWatchDirs(hermesHome));
   add('opencode', path.join(home, '.local', 'share', 'opencode'));

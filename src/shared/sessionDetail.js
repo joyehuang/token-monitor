@@ -129,9 +129,37 @@ function codexToolName(payload) {
   return payload.name || payload.tool_name || payload.tool || '';
 }
 
+function codexUsageTokens(usage) {
+  if (!usage) return null;
+  if (!Object.prototype.hasOwnProperty.call(usage, 'input_tokens')
+    && !Object.prototype.hasOwnProperty.call(usage, 'output_tokens')
+    && !Object.prototype.hasOwnProperty.call(usage, 'cached_input_tokens')) return null;
+  const cacheRead = num(usage.cached_input_tokens);
+  return makeTokens({
+    input: Math.max(0, num(usage.input_tokens) - cacheRead),
+    output: usage.output_tokens,
+    cacheRead,
+    cacheWrite: 0,
+    reasoning: usage.reasoning_output_tokens
+  });
+}
+
+function deltaTokens(current, previous) {
+  if (!current) return null;
+  if (!previous) return current;
+  return makeTokens({
+    input: Math.max(0, current.input - previous.input),
+    output: Math.max(0, current.output - previous.output),
+    cacheRead: Math.max(0, current.cacheRead - previous.cacheRead),
+    cacheWrite: Math.max(0, current.cacheWrite - previous.cacheWrite),
+    reasoning: Math.max(0, current.reasoning - previous.reasoning)
+  });
+}
+
 function parseCodexTranscript(text) {
   const events = [];
   let pendingTools = [];
+  let cumulativeTokens = null;
   for (const line of String(text || '').split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -153,6 +181,17 @@ function parseCodexTranscript(text) {
       // empty + no image → degenerate user_message; skip so its turns fold into the real prompt
       if (label) events.push({ kind: 'prompt', timestamp: obj.timestamp || '', text: label });
     } else if (obj.type === 'event_msg' && payload.type === 'token_count') {
+      const totalUsage = codexUsageTokens(payload.info && payload.info.total_token_usage);
+      if (totalUsage) {
+        const delta = deltaTokens(totalUsage, cumulativeTokens);
+        cumulativeTokens = totalUsage;
+        payload.info.last_token_usage = {
+          input_tokens: delta.input + delta.cacheRead,
+          cached_input_tokens: delta.cacheRead,
+          output_tokens: delta.output,
+          reasoning_output_tokens: delta.reasoning
+        };
+      }
       const u = payload.info && payload.info.last_token_usage;
       if (!u) continue; // session-start / idle tick with no turn usage — not a reply
       // Codex follows OpenAI's convention: input_tokens INCLUDES cached_input_tokens and

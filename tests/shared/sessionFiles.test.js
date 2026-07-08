@@ -65,6 +65,18 @@ test('resolves a codex session via the walk fallback when the id is not a dated 
   } finally { cleanup(home); }
 });
 
+test('resolves a codex archived session', () => {
+  const home = tmpHome();
+  try {
+    const id = 'rollout-2026-05-30T11-44-50-019e76fc-0d58';
+    const dir = path.join(home, '.codex', 'archived_sessions');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${id}.jsonl`);
+    fs.writeFileSync(file, '{}\n');
+    assert.equal(resolveSessionFile('codex', id, home), file);
+  } finally { cleanup(home); }
+});
+
 test('returns empty string when not found or unknown client', () => {
   const home = tmpHome();
   try {

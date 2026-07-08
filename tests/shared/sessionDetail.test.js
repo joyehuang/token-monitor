@@ -103,6 +103,21 @@ test('parseCodexTranscript reads last_token_usage and attaches preceding tools',
   assert.deepEqual(events[2].tools, []);
 });
 
+test('parseCodexTranscript prefers cumulative token deltas when available', () => {
+  const lines = [
+    JSON.stringify({ type: 'event_msg', timestamp: '2026-05-30T03:00:00.000Z', payload: { type: 'user_message', message: 'go' } }),
+    JSON.stringify({ type: 'event_msg', timestamp: '2026-05-30T03:00:02.000Z', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 9999, cached_input_tokens: 0, output_tokens: 1, reasoning_output_tokens: 0, total_tokens: 10000 }, total_token_usage: { input_tokens: 5000, cached_input_tokens: 4000, output_tokens: 200, reasoning_output_tokens: 50, total_tokens: 5200 } } } }),
+    JSON.stringify({ type: 'event_msg', timestamp: '2026-05-30T03:00:03.000Z', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 9999, cached_input_tokens: 0, output_tokens: 1, reasoning_output_tokens: 0, total_tokens: 10000 }, total_token_usage: { input_tokens: 6000, cached_input_tokens: 4500, output_tokens: 300, reasoning_output_tokens: 70, total_tokens: 6300 } } } }),
+    JSON.stringify({ type: 'event_msg', timestamp: '2026-05-30T03:00:04.000Z', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 9999, cached_input_tokens: 0, output_tokens: 1, reasoning_output_tokens: 0, total_tokens: 10000 }, total_token_usage: { input_tokens: 6000, cached_input_tokens: 4500, output_tokens: 300, reasoning_output_tokens: 70, total_tokens: 6300 } } } })
+  ].join('\n');
+
+  const turns = parseCodexTranscript(lines).filter((e) => e.kind === 'turn');
+  assert.equal(turns.length, 2);
+  assert.equal(turns[0].tokens.total, 5200);
+  assert.equal(turns[1].tokens.total, 1100);
+  assert.equal(turns.reduce((sum, turn) => sum + turn.tokens.total, 0), 6300);
+});
+
 test('parseCodexTranscript skips session-start/empty token_count ticks', () => {
   const lines = [
     JSON.stringify({ type: 'event_msg', timestamp: '2026-05-30T03:00:00.000Z', payload: { type: 'user_message', message: 'go' } }),

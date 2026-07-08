@@ -34,6 +34,13 @@ function codexSessionFile(home, sessionId) {
   try { return fs.statSync(filePath).isFile() ? filePath : ''; } catch (_) { return ''; }
 }
 
+function codexArchivedSessionFile(home, sessionId) {
+  const id = String(sessionId || '');
+  if (!id) return '';
+  const filePath = path.join(home, '.codex', 'archived_sessions', `${id}.jsonl`);
+  try { return fs.statSync(filePath).isFile() ? filePath : ''; } catch (_) { return ''; }
+}
+
 function jsonlFilesInDir(dir) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return []; }
@@ -61,8 +68,12 @@ function resolveSessionFiles(client, sessionId, home) {
   if (client === 'codex') {
     const direct = codexSessionFile(home, id);
     if (direct) return [direct];
+    const archived = codexArchivedSessionFile(home, id);
+    if (archived) return [archived];
     const found = findSessionFiles(path.join(home, '.codex', 'sessions'), [id]).get(id) || '';
-    return found ? [found] : [];
+    if (found) return [found];
+    const archivedFound = findSessionFiles(path.join(home, '.codex', 'archived_sessions'), [id]).get(id) || '';
+    return archivedFound ? [archivedFound] : [];
   }
   return [];
 }
@@ -71,4 +82,4 @@ function resolveSessionFile(client, sessionId, home) {
   return resolveSessionFiles(client, sessionId, home)[0] || '';
 }
 
-module.exports = { findSessionFiles, codexSessionFile, resolveSessionFile, resolveSessionFiles };
+module.exports = { findSessionFiles, codexSessionFile, codexArchivedSessionFile, resolveSessionFile, resolveSessionFiles };
