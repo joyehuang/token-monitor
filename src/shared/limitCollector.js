@@ -48,6 +48,8 @@ const CLAUDE_WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
 const CODEX_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api';
 const CODEX_RESET_CREDITS_PATH = '/wham/rate-limit-reset-credits';
 const CODEX_EMPTY_QUOTA_RETRY_DELAY_MS = 300;
+const CODEX_SESSION_RATE_LIMIT_MAX_AGE_MS = 30 * 60 * 1000;
+const CODEX_SESSION_RATE_LIMIT_MAX_FILES = 80;
 const TOKEN_MONITOR_USER_AGENT = `token-monitor/${appVersion()} (+https://github.com/Javis603/token-monitor)`;
 
 function nowIso(nowMs) {
@@ -1144,7 +1146,7 @@ async function touchClaudeAuthPath(deps = {}) {
 }
 
 function codexWindowKind(name, window) {
-  const mins = Number(window?.windowDurationMins || window?.window_duration_mins || 0);
+  const mins = Number(window?.windowDurationMins || window?.window_duration_mins || window?.windowMinutes || window?.window_minutes || 0);
   if (mins >= 7 * 24 * 60) return 'weekly';
   if (String(name).toLowerCase() === 'secondary') return 'weekly';
   return 'session';
@@ -1389,7 +1391,7 @@ function mapCodexRateLimitsToProvider(payload, meta = {}) {
       kind: codexWindowKind(key, window),
       usedPercent: window.usedPercent ?? window.used_percent,
       resetsAt: window.resetsAt ?? window.resets_at,
-      windowMinutes: window.windowDurationMins ?? window.window_duration_mins
+      windowMinutes: window.windowDurationMins ?? window.window_duration_mins ?? window.windowMinutes ?? window.window_minutes
     });
   }
   return normalizeLimitProvider({
@@ -1929,9 +1931,132 @@ function readLiveCodexIdentity(deps = {}) {
   }
 }
 
+function codexHomeDir(deps = {}) {
+  const env = deps.env || process.env;
+  const pathApi = pathApiForPlatform(deps.platform || process.platform);
+  return env.CODEX_HOME || pathApi.join(os.homedir(), '.codex');
+}
+
+function codexSessionRoots(deps = {}) {
+  const pathApi = pathApiForPlatform(deps.platform || process.platform);
+  const home = codexHomeDir(deps);
+  return [
+    deps.codexSessionsPath || pathApi.join(home, 'sessions'),
+    deps.codexArchivedSessionsPath || pathApi.join(home, 'archived_sessions')
+  ];
+}
+
+function statMtimeMs(stats) {
+  const value = Number(stats?.mtimeMs);
+  if (Number.isFinite(value)) return value;
+  const parsed = Date.parse(stats?.mtime || '');
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function collectCodexSessionFiles(deps = {}) {
+  const readdir = deps.readdirSync || fs.readdirSync;
+  const stat = deps.statSync || fs.statSync;
+  const files = [];
+  const stack = codexSessionRoots(deps).filter(Boolean);
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    let entries;
+    try { entries = readdir(dir, { withFileTypes: true }); } catch (_) { continue; }
+    for (const entry of entries || []) {
+      const name = typeof entry === 'string' ? entry : entry?.name;
+      if (!name) continue;
+      const fullPath = pathApiForPlatform(deps.platform || process.platform).join(dir, name);
+      const isDirectory = typeof entry?.isDirectory === 'function' ? entry.isDirectory() : false;
+      const isFile = typeof entry?.isFile === 'function' ? entry.isFile() : !isDirectory;
+      if (isDirectory) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!isFile || !name.endsWith('.jsonl')) continue;
+      let mtimeMs = 0;
+      try { mtimeMs = statMtimeMs(stat(fullPath)); } catch (_) {}
+      files.push({ path: fullPath, mtimeMs });
+    }
+  }
+  return files
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, Number(deps.codexSessionRateLimitMaxFiles || CODEX_SESSION_RATE_LIMIT_MAX_FILES));
+}
+
+function codexSessionRateLimitPayloadFromLine(line) {
+  if (!String(line || '').includes('rate_limits')) return null;
+  let parsed;
+  try { parsed = JSON.parse(line); } catch (_) { return null; }
+  const rateLimits = parsed?.payload?.rate_limits || parsed?.rate_limits;
+  if (!hasCodexRateLimitWindows(rateLimits)) return null;
+  const timestampMs = Date.parse(parsed.timestamp || parsed?.payload?.timestamp || '');
+  if (!Number.isFinite(timestampMs)) return null;
+  return {
+    timestampMs,
+    timestamp: new Date(timestampMs).toISOString(),
+    rateLimits: {
+      ...rateLimits,
+      ...(rateLimits.plan_type && !rateLimits.planType ? { planType: rateLimits.plan_type } : {})
+    }
+  };
+}
+
+function latestCodexSessionRateLimitsFromFile(filePath, deps = {}) {
+  const read = deps.readFileSync || fs.readFileSync;
+  let text;
+  try { text = read(filePath, 'utf8'); } catch (_) { return null; }
+  const lines = String(text).split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const payload = codexSessionRateLimitPayloadFromLine(lines[index]);
+    if (payload) return { ...payload, filePath };
+  }
+  return null;
+}
+
+function codexSessionRateLimitIsFresh(payload, deps = {}, nowMs = Date.now()) {
+  if (!payload) return false;
+  const maxAgeMs = Number(deps.codexSessionRateLimitMaxAgeMs ?? CODEX_SESSION_RATE_LIMIT_MAX_AGE_MS);
+  const timestampMs = Number(payload.timestampMs ?? Date.parse(payload.timestamp || ''));
+  if (!Number.isFinite(timestampMs)) return false;
+  const ageMs = nowMs - timestampMs;
+  if (Number.isFinite(maxAgeMs) && maxAgeMs >= 0 && ageMs > maxAgeMs) return false;
+  return ageMs >= -5 * 60 * 1000;
+}
+
+function readLatestCodexSessionRateLimits(deps = {}, nowMs = Date.now()) {
+  if (deps.readCodexSessionRateLimits) {
+    const payload = deps.readCodexSessionRateLimits(deps, nowMs);
+    return codexSessionRateLimitIsFresh(payload, deps, nowMs) ? payload : null;
+  }
+  if (deps.codexSessionRateLimits === false) return null;
+  if ((deps.readFileSync || deps.readdirSync || deps.statSync) && !(deps.readFileSync && deps.readdirSync && deps.statSync)) {
+    return null;
+  }
+  for (const file of collectCodexSessionFiles(deps)) {
+    const payload = latestCodexSessionRateLimitsFromFile(file.path, deps);
+    if (!payload) continue;
+    if (!codexSessionRateLimitIsFresh(payload, deps, nowMs)) continue;
+    return payload;
+  }
+  return null;
+}
+
+function preferLatestCodexSessionRateLimits(payload, deps = {}, nowMs = Date.now()) {
+  let sessionPayload;
+  try { sessionPayload = readLatestCodexSessionRateLimits(deps, nowMs); } catch (_) { return payload; }
+  if (!hasCodexRateLimitWindows(sessionPayload?.rateLimits)) return payload;
+  return {
+    ...payload,
+    rateLimits: sessionPayload.rateLimits,
+    rateLimitsByLimitId: {},
+    sourceDetail: payload.sourceDetail || 'app'
+  };
+}
+
 async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now()) {
   const reader = deps.readCodexRpc || readCodexRpc;
-  const payload = await withCodexOAuthResetCredits(await reader(deps), deps);
+  let payload = await withCodexOAuthResetCredits(await reader(deps), deps);
+  payload = preferLatestCodexSessionRateLimits(payload, deps, nowMs);
   const authIdentity = readLiveCodexIdentity(deps);
   const email = authIdentity.email || payload.account?.email || '';
   const fallbackSeed = payload.account?.email || `${payload.account?.type || 'account'}:${payload.account?.planType || ''}:${deps.codexAuthPath || codexAuthPath(deps.env || process.env)}`;

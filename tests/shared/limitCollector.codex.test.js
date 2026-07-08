@@ -400,6 +400,63 @@ test('fetchCodexLimits fills the live account email from auth.json when the RPC 
   assert.match(live.accountKey, /^sha256:[0-9a-f]{64}$/);
 });
 
+test('fetchCodexLimits prefers the latest live Codex session rate-limit snapshot over stale RPC windows', async () => {
+  const providers = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-06-01T00:05:00Z'),
+    env: { PATH: '/usr/bin' },
+    ...noLiveAuth,
+    readCodexRpc: async () => ({
+      account: { email: 'live@example.com', planType: 'plus' },
+      rateLimits: {
+        primary: { usedPercent: 53, resetsAt: '2026-06-01T05:00:00Z', windowDurationMins: 300 },
+        secondary: { usedPercent: 53, resetsAt: '2026-06-07T00:00:00Z', windowDurationMins: 10080 }
+      },
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => ({
+      timestampMs: Date.parse('2026-06-01T00:04:00Z'),
+      rateLimits: {
+        plan_type: 'prolite',
+        primary: { used_percent: 4, resets_at: '2026-06-01T05:30:00Z', window_minutes: 300 },
+        secondary: { used_percent: 2, resets_at: '2026-06-08T00:00:00Z', window_minutes: 10080 }
+      }
+    })
+  });
+
+  assert.equal(providers.accountEmail, 'live@example.com');
+  assert.equal(providers.accountLabel, 'Pro 5x');
+  assert.deepEqual(providers.windows.map((window) => [window.kind, window.usedPercent, window.remainingPercent, window.windowMinutes]), [
+    ['session', 4, 96, 300],
+    ['weekly', 2, 98, 10080]
+  ]);
+  assert.equal(providers.windows[0].resetsAt, '2026-06-01T05:30:00.000Z');
+});
+
+test('fetchCodexLimits ignores old Codex session rate-limit snapshots', async () => {
+  const providers = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-06-01T01:00:00Z'),
+    env: { PATH: '/usr/bin' },
+    ...noLiveAuth,
+    readCodexRpc: async () => ({
+      account: { email: 'live@example.com', planType: 'plus' },
+      rateLimits: {
+        primary: { usedPercent: 53, resetsAt: '2026-06-01T05:00:00Z', windowDurationMins: 300 }
+      },
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => ({
+      timestampMs: Date.parse('2026-06-01T00:00:00Z'),
+      rateLimits: {
+        primary: { used_percent: 4, resets_at: '2026-06-01T05:30:00Z', window_minutes: 300 }
+      }
+    })
+  });
+
+  assert.equal(providers.windows[0].usedPercent, 53);
+  assert.equal(providers.windows[0].remainingPercent, 47);
+  assert.equal(providers.windows[0].resetsAt, '2026-06-01T05:00:00.000Z');
+});
+
 test('fetchCodexLimits retries empty Codex quota reads on the same RPC session', async () => {
   const { EventEmitter } = require('node:events');
   let spawns = 0;
