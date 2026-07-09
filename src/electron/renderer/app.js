@@ -4,7 +4,7 @@ const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', 
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
 const clientsWithIcon = new Set([
   'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy',
-  'xai', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'cohere', 'xiaomi', 'minimax', 'doubao', 'volcengine', 'qoder'
+  'xai', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'zaiteam', 'cohere', 'xiaomi', 'minimax', 'doubao', 'volcengine', 'qoder'
 ]);
 
 function osIconFor(platform) {
@@ -71,6 +71,7 @@ const LIMIT_PROVIDERS = [
   { id: 'copilot', label: 'GitHub Copilot' },
   { id: 'kiro', label: 'Kiro' },
   { id: 'zai', label: 'GLM' },
+  { id: 'zaiteam', label: 'GLM Team' },
   { id: 'volcengine', label: 'Volcengine' },
   { id: 'qoder', label: 'Qoder' }
 ];
@@ -187,7 +188,7 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
 const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: true, settingsInTitlebar: false };
 let preferenceDrag = null;
@@ -383,13 +384,14 @@ function settingsSectionSummary(section) {
     const deepseekLinked = deepseekAccountLinked();
     const minimaxLinked = minimaxAccountLinked();
     const zaiLinked = externalProviderAccountLinked('zai');
+    const zaiteamLinked = externalProviderAccountLinked('zaiteam');
     const volcengineLinked = externalProviderAccountLinked('volcengine');
     const qoderLinked = externalProviderAccountLinked('qoder');
     const copilotLinked = copilotAccountLinked();
     const codexLinked = (state.settings?.codexManagedAccounts || []).length > 0;
     return t('settings.summary.accounts', {
-      linked: (codexLinked ? 1 : 0) + (cursorLinked ? 1 : 0) + (opencodeCount > 0 ? 1 : 0) + (deepseekLinked ? 1 : 0) + (minimaxLinked ? 1 : 0) + (zaiLinked ? 1 : 0) + (volcengineLinked ? 1 : 0) + (qoderLinked ? 1 : 0) + (copilotLinked ? 1 : 0),
-      total: 9
+      linked: (codexLinked ? 1 : 0) + (cursorLinked ? 1 : 0) + (opencodeCount > 0 ? 1 : 0) + (deepseekLinked ? 1 : 0) + (minimaxLinked ? 1 : 0) + (zaiLinked ? 1 : 0) + (zaiteamLinked ? 1 : 0) + (volcengineLinked ? 1 : 0) + (qoderLinked ? 1 : 0) + (copilotLinked ? 1 : 0),
+      total: 10
     });
   }
   if (section === 'limits') {
@@ -1709,7 +1711,7 @@ function renderProviderWindows(provider, color) {
       node.classList.add('limit-window-wide');
       windows.append(node);
     }
-  } else if (provider.provider === 'zai') {
+  } else if (provider.provider === 'zai' || provider.provider === 'zaiteam') {
     const fiveHour = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
     const mcp = windowForKind(provider, 'billing');
@@ -3304,6 +3306,7 @@ async function refreshStats(options = {}) {
     renderDeepseekStatus();
     renderMinimaxStatus();
     renderExternalProviderStatus('zai');
+    renderExternalProviderStatus('zaiteam');
     renderExternalProviderStatus('volcengine');
     renderExternalProviderStatus('qoder');
     renderCopilotStatus();
@@ -4150,6 +4153,7 @@ function syncSettingsForm() {
   renderDeepseekStatus();
   renderMinimaxStatus();
   renderExternalProviderStatus('zai');
+  renderExternalProviderStatus('zaiteam');
   renderExternalProviderStatus('volcengine');
   renderExternalProviderStatus('qoder');
   renderCopilotStatus();
@@ -5715,6 +5719,7 @@ window.tokenMonitor.onStatsPush?.((payload) => {
     renderDeepseekStatus();
     renderMinimaxStatus();
     renderExternalProviderStatus('zai');
+    renderExternalProviderStatus('zaiteam');
     renderExternalProviderStatus('volcengine');
     renderExternalProviderStatus('qoder');
     renderCopilotStatus();
@@ -6207,6 +6212,11 @@ const externalLimitAccountConfig = {
     sourceKey: 'zaiApiKeySource',
     pendingKey: 'zaiPendingCheckSince'
   },
+  zaiteam: {
+    configuredKey: 'zaiTeamApiKeyConfigured',
+    sourceKey: 'zaiTeamApiKeySource',
+    pendingKey: 'zaiteamPendingCheckSince'
+  },
   volcengine: {
     configuredKey: 'volcengineCredentialsConfigured',
     sourceKey: 'volcengineCredentialsSource',
@@ -6324,6 +6334,10 @@ function zaiPlatformUrl() {
   return region === 'bigmodel-cn'
     ? 'https://bigmodel.cn/coding-plan/personal/usage'
     : 'https://z.ai/manage-apikey/coding-plan/personal/my-plan';
+}
+
+function zaiteamPlatformUrl() {
+  return 'https://bigmodel.cn/coding-plan/team/usage-stats';
 }
 
 function volcenginePlatformUrl() {
@@ -7198,6 +7212,60 @@ function setupCursorAccountUI() {
     });
   }
 
+  const zaiteamToggle = document.getElementById('zaiteamSettingsToggle');
+  if (zaiteamToggle) {
+    zaiteamToggle.addEventListener('click', () => setExternalAccountExpanded('zaiteam', !state.zaiteamAccountExpanded));
+    setExternalAccountExpanded('zaiteam', false);
+    renderExternalProviderStatus('zaiteam');
+
+    document.getElementById('zaiteamOpenBrowser').addEventListener('click', () => {
+      window.tokenMonitor.openExternal(zaiteamPlatformUrl());
+    });
+
+    document.getElementById('zaiteamLogoutButton').addEventListener('click', async () => {
+      await saveSettings({ zaiTeamApiKey: '', zaiTeamOrganizationId: '', zaiTeamProjectId: '' });
+      clearExternalProviderCheckPending('zaiteam');
+      clearExternalProviderPendingStatus('zaiteam');
+      renderExternalProviderStatus('zaiteam');
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('zaiteamRefreshButton').addEventListener('click', async () => {
+      await refreshStats({ force: true });
+    });
+
+    document.getElementById('zaiteamApiKeySubmit').addEventListener('click', async () => {
+      const keyInput = document.getElementById('zaiteamApiKeyInput');
+      const orgInput = document.getElementById('zaiteamOrganizationIdInput');
+      const projectInput = document.getElementById('zaiteamProjectIdInput');
+      const errorEl = document.getElementById('zaiteamErrorMessage');
+      errorEl.classList.add('hidden');
+      const apiKey = String(keyInput.value || '').trim();
+      const organizationId = String(orgInput.value || '').trim();
+      const projectId = String(projectInput.value || '').trim();
+      if (!apiKey || !organizationId || !projectId) {
+        errorEl.textContent = t('settings.zaiteam.statusNotSet');
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      try {
+        markExternalProviderCheckPending('zaiteam');
+        await saveSettings({ zaiTeamApiKey: apiKey, zaiTeamOrganizationId: organizationId, zaiTeamProjectId: projectId });
+        keyInput.value = '';
+        orgInput.value = '';
+        projectInput.value = '';
+        renderExternalProviderStatus('zaiteam');
+        await refreshStats({ force: true });
+        setExternalAccountExpanded('zaiteam', !externalProviderAccountLinked('zaiteam'));
+        renderExternalProviderStatus('zaiteam');
+      } catch (err) {
+        clearExternalProviderCheckPending('zaiteam');
+        errorEl.textContent = t('settings.zaiteam.saveFailed', { message: err.message });
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
   const volcengineToggle = document.getElementById('volcengineSettingsToggle');
   if (volcengineToggle) {
     volcengineToggle.addEventListener('click', () => setExternalAccountExpanded('volcengine', !state.volcengineAccountExpanded));
@@ -7456,6 +7524,7 @@ function initSettingsAnimationWrappers() {
     '#deepseekManualPanel',
     '#minimaxManualPanel',
     '#zaiManualPanel',
+    '#zaiteamManualPanel',
     '#volcengineManualPanel',
     '#qoderManualPanel'
   ].join(', ');
