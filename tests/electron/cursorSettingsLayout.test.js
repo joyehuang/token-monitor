@@ -265,8 +265,8 @@ test('Codex system account switching is exposed from limits account rows', () =>
   assert.match(cssRule(css, '.limit-account-switch-popover'), /left: calc\(100% \+ 8px\)/);
   assert.match(css, /\.limit-account-switch-zone::after\s*\{[^}]*width: 10px;/s);
   assert.doesNotMatch(css, /\.limit-account-switch-zone\.has-opened \.limit-account-switch-popover\s*\{[^}]*transition: none;/s);
-  assert.match(css, /\.limit-account-switch-button\s*\{[^}]*rgba\(var\(--glass-rgb\), 0\.66\)/s);
-  assert.match(css, /\.limit-account-switch-button\s*\{[^}]*border: 1px solid rgba\(var\(--line-rgb\), 0\.22\)/s);
+  assert.match(css, /\.limit-account-switch-button\s*\{[^}]*rgba\(var\(--glass-rgb\), 0\.52\)/s);
+  assert.match(css, /\.limit-account-switch-button\s*\{[^}]*border: 1px solid rgba\(var\(--line-rgb\), 0\.18\)/s);
   assert.match(css, /\.limit-account-switch-button/);
   assert.doesNotMatch(cssRule(css, '.limit-account-switch-popover'), /left: calc\(100% \+ 6px\)/);
   assert.doesNotMatch(css, /background: rgba\(24, 28, 32, 0\.9\)/);
