@@ -9,10 +9,12 @@ const vm = require('node:vm');
 const {
   apiKeyAccountStatus,
   isCodexLiveAccount,
+  isInactiveLimitWindow,
   limitProviderDisplayLabel,
   limitProviderCapabilityTags,
   limitProviderMainDeviceLabel,
   limitProviderProvenance,
+  limitResetRemainingMs,
   limitProviderSettingsTags
 } = require('../../src/electron/renderer/limitProviderPresentation');
 
@@ -46,6 +48,47 @@ test('limitProviderDisplayLabel normalizes short account labels without rewritin
   assert.equal(limitProviderDisplayLabel('Team'), 'Team');
   assert.equal(limitProviderDisplayLabel('javis603@gmail.com'), 'javis603@gmail.com');
   assert.equal(limitProviderDisplayLabel(''), '');
+});
+
+test('limitResetRemainingMs keeps future resets, briefly marks reset time, and expires old timestamps', () => {
+  const now = Date.parse('2026-07-10T03:00:00.000Z');
+
+  assert.equal(limitResetRemainingMs('2026-07-10T04:30:00.000Z', now), 90 * 60 * 1000);
+  assert.equal(limitResetRemainingMs('2026-07-10T02:59:30.000Z', now), 0);
+  assert.equal(limitResetRemainingMs('2026-07-10T02:58:59.000Z', now), null);
+  assert.equal(limitResetRemainingMs('not-a-date', now), null);
+  assert.equal(limitResetRemainingMs(null, now), null);
+});
+
+test('isInactiveLimitWindow identifies only an unused Claude session without a reset', () => {
+  assert.equal(isInactiveLimitWindow('claude', {
+    kind: 'session', usedPercent: 0, remainingPercent: 100, resetsAt: null, resetDescription: ''
+  }), true);
+  assert.equal(isInactiveLimitWindow('claude', {
+    kind: 'session', usedPercent: 1, remainingPercent: 99, resetsAt: null, resetDescription: ''
+  }), false);
+  assert.equal(isInactiveLimitWindow('claude', {
+    kind: 'session', usedPercent: 0, remainingPercent: 100, resetsAt: '2026-07-10T04:00:00Z'
+  }), false);
+  assert.equal(isInactiveLimitWindow('codex', {
+    kind: 'session', usedPercent: 0, remainingPercent: 100, resetsAt: null
+  }), false);
+});
+
+test('Limits and Home reset rendering share expiry and inactive-window presentation', () => {
+  const app = readRendererFile('app.js');
+  const formatReset = functionBody(app, 'formatReset', 'formatDuration');
+  const limitWindow = functionBody(app, 'limitWindowNode', 'providersByLimitProviderId');
+  const homeLimits = functionBody(app, 'renderHomeLimitModule', 'renderHomeModelModule');
+  const i18n = readRendererFile('i18n.js');
+
+  assert.match(formatReset, /limitResetRemainingMs\(value\)/);
+  assert.match(formatReset, /diffMs === 0/);
+  assert.match(limitWindow, /window\?\.resetsAt\s*\? formatReset\(window\.resetsAt\)/);
+  assert.doesNotMatch(limitWindow, /formatReset\(window\?\.resetsAt\) \|\| window\?\.resetDescription/);
+  assert.match(homeLimits, /window\.resetsAt\s*\? resetAt \|\|/);
+  assert.match(homeLimits, /isInactiveLimitWindow\(row\.providerId, window\)/);
+  assert.equal((i18n.match(/'home\.noActiveLimitWindow':/g) || []).length, 5);
 });
 
 const rendererDir = path.join(__dirname, '..', '..', 'src', 'electron', 'renderer');

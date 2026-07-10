@@ -113,6 +113,30 @@
     return label.replace(/^[a-z]/, (letter) => letter.toUpperCase());
   }
 
+  function limitResetRemainingMs(value, nowMs = Date.now(), resetNowGraceMs = 60 * 1000) {
+    if (!value) return null;
+    const resetMs = new Date(value).getTime();
+    const currentMs = Number(nowMs);
+    if (!Number.isFinite(resetMs) || !Number.isFinite(currentMs)) return null;
+    const remainingMs = resetMs - currentMs;
+    if (remainingMs > 0) return remainingMs;
+    return remainingMs >= -Math.max(0, Number(resetNowGraceMs) || 0) ? 0 : null;
+  }
+
+  function isInactiveLimitWindow(providerOrId, window) {
+    if (providerId(providerOrId) !== 'claude') return false;
+    if (normalizeId(window?.kind) !== 'session') return false;
+    if (window?.resetsAt || window?.resetDescription) return false;
+    const remaining = window?.remainingPercent === null || window?.remainingPercent === undefined
+      ? null
+      : Number(window.remainingPercent);
+    const used = window?.usedPercent === null || window?.usedPercent === undefined
+      ? null
+      : Number(window.usedPercent);
+    return (Number.isFinite(remaining) && remaining >= 100)
+      || (Number.isFinite(used) && used <= 0);
+  }
+
   // The "live" Codex account is the one THIS device's Codex app/CLI is currently
   // signed into (sourceDetail app/cli/unknown). Managed accounts added inside
   // Token Monitor report sourceDetail 'managed' and are NOT live. A remote
@@ -285,10 +309,12 @@
   return {
     apiKeyAccountStatus,
     isCodexLiveAccount,
+    isInactiveLimitWindow,
     limitProviderCapabilityTags,
     limitProviderDisplayLabel,
     limitProviderMainDeviceLabel,
     limitProviderProvenance,
+    limitResetRemainingMs,
     limitProviderSourceLabel,
     limitProviderStatusLabel,
     limitProviderSettingsTags
