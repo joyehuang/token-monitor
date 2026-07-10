@@ -2082,24 +2082,25 @@ function canonicalCodexWindow(selected, fallback) {
   };
 }
 
-// RPC is read now but may carry an old app cache; session JSONL has an explicit
-// observation timestamp but can lag behind an active request. Rate-limit usage
-// is monotonic inside one reset window, so equal windows keep the larger used
-// percentage. When reset times differ, the later reset belongs to the newer
-// quota cycle (including the legitimate percentage drop after a reset).
-function mergeCodexRateLimitWindow(rpcWindow, sessionWindow) {
+// RPC belongs to the account currently active in Codex. Session JSONL has an
+// explicit observation timestamp but can come from another still-running Codex
+// process/account, and those events do not carry a usable account identity.
+// Therefore session data may only raise monotonic usage inside the SAME reset
+// window. A different reset anchor is accepted only when the RPC window has
+// actually expired and the session window is demonstrably the next live cycle.
+function mergeCodexRateLimitWindow(rpcWindow, sessionWindow, nowMs = Date.now()) {
   if (!rpcWindow) return sessionWindow;
   if (!sessionWindow) return rpcWindow;
 
   const rpcResetMs = codexWindowResetMs(rpcWindow);
   const sessionResetMs = codexWindowResetMs(sessionWindow);
-  if (rpcResetMs !== null && sessionResetMs !== null && Math.abs(rpcResetMs - sessionResetMs) > 1000) {
-    return sessionResetMs > rpcResetMs
-      ? canonicalCodexWindow(sessionWindow, rpcWindow)
-      : canonicalCodexWindow(rpcWindow, sessionWindow);
+  if (rpcResetMs !== null && sessionResetMs !== null && Math.abs(rpcResetMs - sessionResetMs) > 2000) {
+    if (rpcResetMs <= nowMs && sessionResetMs > nowMs) {
+      return canonicalCodexWindow(sessionWindow, rpcWindow);
+    }
+    return canonicalCodexWindow(rpcWindow, sessionWindow);
   }
-  if (rpcResetMs === null && sessionResetMs !== null) return canonicalCodexWindow(sessionWindow, rpcWindow);
-  if (sessionResetMs === null && rpcResetMs !== null) return canonicalCodexWindow(rpcWindow, sessionWindow);
+  if (rpcResetMs === null || sessionResetMs === null) return canonicalCodexWindow(rpcWindow, sessionWindow);
 
   const rpcUsed = codexWindowUsedPercent(rpcWindow);
   const sessionUsed = codexWindowUsedPercent(sessionWindow);
@@ -2119,15 +2120,17 @@ function preferLatestCodexSessionRateLimits(payload, deps = {}, nowMs = Date.now
   if (!hasCodexRateLimitWindows(sessionPayload?.rateLimits)) return payload;
   const rpcRateLimits = codexRateLimitSnapshot(payload);
   const sessionRateLimits = sessionPayload.rateLimits;
+  const rpcHasWindows = hasCodexRateLimitWindows(rpcRateLimits);
+  const selectedPlanType = rpcHasWindows
+    ? rpcRateLimits.planType ?? rpcRateLimits.plan_type
+    : sessionRateLimits.planType ?? sessionRateLimits.plan_type;
   const mergedRateLimits = {
-    ...rpcRateLimits,
     ...sessionRateLimits,
-    planType: sessionRateLimits.planType
-      ?? sessionRateLimits.plan_type
-      ?? rpcRateLimits.planType
-      ?? rpcRateLimits.plan_type,
-    primary: mergeCodexRateLimitWindow(rpcRateLimits.primary, sessionRateLimits.primary),
-    secondary: mergeCodexRateLimitWindow(rpcRateLimits.secondary, sessionRateLimits.secondary)
+    ...rpcRateLimits,
+    planType: selectedPlanType,
+    plan_type: selectedPlanType,
+    primary: mergeCodexRateLimitWindow(rpcRateLimits.primary, sessionRateLimits.primary, nowMs),
+    secondary: mergeCodexRateLimitWindow(rpcRateLimits.secondary, sessionRateLimits.secondary, nowMs)
   };
   return {
     ...payload,

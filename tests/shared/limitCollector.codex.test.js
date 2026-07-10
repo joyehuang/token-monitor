@@ -489,7 +489,7 @@ test('fetchCodexLimits fills the live account email from auth.json when the RPC 
   assert.match(live.accountKey, /^sha256:[0-9a-f]{64}$/);
 });
 
-test('fetchCodexLimits uses a newer quota cycle from a recent Codex session snapshot', async () => {
+test('fetchCodexLimits keeps live RPC when a recent session snapshot has a different future reset anchor', async () => {
   const providers = await fetchCodexLimits({}, {
     now: () => Date.parse('2026-06-01T00:05:00Z'),
     env: { PATH: '/usr/bin' },
@@ -513,12 +513,12 @@ test('fetchCodexLimits uses a newer quota cycle from a recent Codex session snap
   });
 
   assert.equal(providers.accountEmail, 'live@example.com');
-  assert.equal(providers.accountLabel, 'Pro 5x');
+  assert.equal(providers.accountLabel, 'Plus');
   assert.deepEqual(providers.windows.map((window) => [window.kind, window.usedPercent, window.remainingPercent, window.windowMinutes]), [
-    ['session', 4, 96, 300],
-    ['weekly', 2, 98, 10080]
+    ['session', 53, 47, 300],
+    ['weekly', 53, 47, 10080]
   ]);
-  assert.equal(providers.windows[0].resetsAt, '2026-06-01T05:30:00.000Z');
+  assert.equal(providers.windows[0].resetsAt, '2026-06-01T05:00:00.000Z');
 });
 
 test('fetchCodexLimits keeps the higher usage when RPC and session snapshots share a reset window', async () => {
@@ -565,6 +565,30 @@ test('fetchCodexLimits accepts a lower percentage after RPC advances to a new re
       timestampMs: Date.parse('2026-06-01T05:04:00Z'),
       rateLimits: {
         primary: { used_percent: 98, resets_at: '2026-06-01T05:00:00Z', window_minutes: 300 }
+      }
+    })
+  });
+
+  assert.equal(provider.windows[0].usedPercent, 2);
+  assert.equal(provider.windows[0].resetsAt, '2026-06-01T10:00:00.000Z');
+});
+
+test('fetchCodexLimits uses a recent session snapshot after the RPC reset window has expired', async () => {
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-06-01T05:05:00Z'),
+    env: { PATH: '/usr/bin' },
+    ...noLiveAuth,
+    readCodexRpc: async () => ({
+      account: { planType: 'plus' },
+      rateLimits: {
+        primary: { usedPercent: 98, resetsAt: '2026-06-01T05:00:00Z', windowDurationMins: 300 }
+      },
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => ({
+      timestampMs: Date.parse('2026-06-01T05:04:00Z'),
+      rateLimits: {
+        primary: { used_percent: 2, resets_at: '2026-06-01T10:00:00Z', window_minutes: 300 }
       }
     })
   });
