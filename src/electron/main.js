@@ -1631,6 +1631,7 @@ function updateTrayDisplay() {
     limitProviders: settings?.limitProviders,
     showLimitUsed: settings?.showLimitUsed
   });
+  const barsImageMode = (mode === 'bars' || mode === 'barsSession' || mode === 'barsWeekly' || mode === 'barsAllSessions') && !limitText && providerTrayIcons[mode];
   // A renderer-generated icon is cached in the main process. Only reuse it
   // while the current stats still have quota text; otherwise it can outlive
   // the provider data that generated it.
@@ -1642,7 +1643,7 @@ function updateTrayDisplay() {
   tray.setToolTip(`Token Monitor - ${tip}`);
   // Icon: rendered bars image in bar modes, otherwise the app icon.
   let icon = null;
-  if (((mode === 'bars' || mode === 'barsSession' || mode === 'barsWeekly' || mode === 'barsAllSessions') && providerTrayIcons[mode]) || trayImageMode) {
+  if (barsImageMode || trayImageMode) {
     icon = providerTrayIcons[mode];
   } else {
     const usageIconId = pickUsageTrayIconId(latestStats, mode, Object.keys(providerTrayIcons));
