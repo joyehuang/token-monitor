@@ -51,6 +51,11 @@ test('translate falls back to English and interpolates values', () => {
   assert.equal(translate('zh-CN', 'home.resetNow'), '立即重置');
   assert.equal(translate('ko', 'home.reset', { value: '5m' }), '5m 초기화');
   assert.equal(translate('ja', 'home.resetNow'), '今すぐリセット');
+  assert.equal(translate('en', 'duration.hoursMinutes', { hours: 1, minutes: 5 }), '1h 5m');
+  assert.equal(translate('zh-TW', 'duration.hoursMinutes', { hours: 1, minutes: 5 }), '1 小時 5 分鐘');
+  assert.equal(translate('zh-CN', 'duration.lessThanMinute'), '少于 1 分钟');
+  assert.equal(translate('ko', 'duration.daysHours', { days: 1, hours: 2 }), '1일 2시간');
+  assert.equal(translate('ja', 'duration.minutes', { minutes: 5 }), '5分');
   assert.equal(translate('zh-TW', 'missing.key'), 'missing.key');
 });
 

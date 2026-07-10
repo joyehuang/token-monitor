@@ -89,13 +89,18 @@ test('isInactiveLimitWindow identifies only an unused Claude session without an 
 test('Limits and Home reset rendering share expiry and inactive-window presentation', () => {
   const app = readRendererFile('app.js');
   const formatReset = functionBody(app, 'formatReset', 'formatDuration');
+  const formatResetDuration = functionBody(app, 'formatResetDuration', 'formatActiveDuration');
   const limitWindow = functionBody(app, 'limitWindowNode', 'providersByLimitProviderId');
   const homeLimits = functionBody(app, 'renderHomeLimitModule', 'renderHomeModelModule');
   const i18n = readRendererFile('i18n.js');
 
   assert.match(formatReset, /limitResetRemainingMs\(value\)/);
   assert.match(formatReset, /diffMs === 0\) return t\('home\.resetNow'\)/);
-  assert.match(formatReset, /return t\('home\.reset', \{ value: formatDuration\(diffMs\) \}\)/);
+  assert.match(formatReset, /return t\('home\.reset', \{ value: formatResetDuration\(diffMs\) \}\)/);
+  assert.match(formatResetDuration, /t\('duration\.daysHours'/);
+  assert.match(formatResetDuration, /t\('duration\.hoursMinutes'/);
+  assert.match(formatResetDuration, /t\('duration\.minutes'/);
+  assert.match(formatResetDuration, /t\('duration\.lessThanMinute'/);
   assert.match(limitWindow, /window\?\.resetsAt\s*\? formatReset\(window\.resetsAt\)/);
   assert.doesNotMatch(limitWindow, /formatReset\(window\?\.resetsAt\) \|\| window\?\.resetDescription/);
   assert.match(homeLimits, /window\.resetsAt\s*\? resetAt \|\|/);

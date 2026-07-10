@@ -495,7 +495,7 @@ function formatReset(value) {
   const diffMs = limitProviderPresentationApi.limitResetRemainingMs(value);
   if (diffMs === null) return '';
   if (diffMs === 0) return t('home.resetNow');
-  return t('home.reset', { value: formatDuration(diffMs) });
+  return t('home.reset', { value: formatResetDuration(diffMs) });
 }
 function formatDuration(ms) {
   const totalMinutes = Math.max(0, Math.round(ms / 60000));
@@ -506,6 +506,16 @@ function formatDuration(ms) {
   if (hours > 0) return `${hours}h ${minutes}m`;
   if (minutes > 0) return `${minutes}m`;
   return '<1m';
+}
+function formatResetDuration(ms) {
+  const totalMinutes = Math.max(0, Math.round(ms / 60000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return t('duration.daysHours', { days, hours });
+  if (hours > 0) return t('duration.hoursMinutes', { hours, minutes });
+  if (minutes > 0) return t('duration.minutes', { minutes });
+  return t('duration.lessThanMinute');
 }
 function formatActiveDuration(ms) {
   const totalMinutes = Math.max(0, Math.round(Number(ms || 0) / 60000));
