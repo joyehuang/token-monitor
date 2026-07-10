@@ -46,6 +46,7 @@ const CLAUDE_REFRESH_LEEWAY_MS = 5 * 60 * 1000;
 const CLAUDE_SESSION_WINDOW_MINUTES = 5 * 60;
 const CLAUDE_WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
 const CODEX_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api';
+const CODEX_USAGE_PATH = '/wham/usage';
 const CODEX_RESET_CREDITS_PATH = '/wham/rate-limit-reset-credits';
 const CODEX_EMPTY_QUOTA_RETRY_DELAY_MS = 300;
 const CODEX_SESSION_RATE_LIMIT_MAX_AGE_MS = 30 * 60 * 1000;
@@ -1191,7 +1192,13 @@ function codexAccessTokenFromAuth(auth) {
 }
 
 function codexProviderAccountIdFromAuth(auth) {
-  return codexAuthIdentity(auth).providerAccountId;
+  const tokens = auth?.tokens || auth || {};
+  return String(
+    tokens.account_id
+    || auth?.account_id
+    || codexAuthIdentity(auth).providerAccountId
+    || ''
+  ).trim();
 }
 
 function parseCodexChatGptBaseUrl(configContents) {
@@ -1212,6 +1219,180 @@ function normalizeCodexChatGptBaseUrl(value) {
     normalized += '/backend-api';
   }
   return normalized;
+}
+
+function codexOAuthHeaders(accessToken, accountId) {
+  return {
+    authorization: `Bearer ${accessToken}`,
+    accept: 'application/json',
+    'user-agent': TOKEN_MONITOR_USER_AGENT,
+    'openai-beta': 'codex-1',
+    originator: 'Codex Desktop',
+    ...(accountId ? { 'chatgpt-account-id': accountId } : {})
+  };
+}
+
+function codexUsageWindow(window) {
+  if (!window || typeof window !== 'object') return null;
+  const durationSeconds = Number(window.limit_window_seconds ?? window.limitWindowSeconds);
+  const durationMinutes = Number(
+    window.windowDurationMins
+    ?? window.window_duration_mins
+    ?? window.windowMinutes
+    ?? window.window_minutes
+  );
+  const usedPercent = Number(window.usedPercent ?? window.used_percent);
+  const resetsAt = window.resetsAt ?? window.resets_at ?? window.resetAt ?? window.reset_at;
+  if (!Number.isFinite(usedPercent) && resetsAt === undefined && !Number.isFinite(durationSeconds) && !Number.isFinite(durationMinutes)) {
+    return null;
+  }
+  return {
+    ...(Number.isFinite(usedPercent) ? { usedPercent } : {}),
+    ...(resetsAt !== undefined ? { resetsAt } : {}),
+    ...(Number.isFinite(durationMinutes)
+      ? { windowDurationMins: durationMinutes }
+      : Number.isFinite(durationSeconds) ? { windowDurationMins: durationSeconds / 60 } : {})
+  };
+}
+
+function codexUsageRateLimit(rateLimit, meta = {}) {
+  if (!rateLimit || typeof rateLimit !== 'object') return null;
+  const primary = codexUsageWindow(rateLimit.primary_window ?? rateLimit.primaryWindow ?? rateLimit.primary);
+  const secondary = codexUsageWindow(rateLimit.secondary_window ?? rateLimit.secondaryWindow ?? rateLimit.secondary);
+  return {
+    limitId: meta.limitId || rateLimit.limit_id || rateLimit.limitId || 'codex',
+    limitName: meta.limitName || rateLimit.limit_name || rateLimit.limitName || null,
+    planType: meta.planType || rateLimit.plan_type || rateLimit.planType,
+    rateLimitReachedType: rateLimit.rate_limit_reached_type ?? rateLimit.rateLimitReachedType ?? meta.rateLimitReachedType ?? null,
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {})
+  };
+}
+
+function parseCodexUsagePayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    throw errorWithStatus('unavailable', 'Invalid Codex usage response');
+  }
+  const planType = payload.plan_type ?? payload.planType;
+  const rateLimitReachedType = payload.rate_limit_reached_type ?? payload.rateLimitReachedType;
+  const main = codexUsageRateLimit(payload.rate_limit ?? payload.rateLimit, {
+    limitId: 'codex',
+    planType,
+    rateLimitReachedType
+  });
+  if (!main) throw errorWithStatus('unavailable', 'Codex usage response missing rate limit');
+
+  const rateLimitsByLimitId = { codex: main };
+  const additional = payload.additional_rate_limits ?? payload.additionalRateLimits;
+  for (const entry of Array.isArray(additional) ? additional : []) {
+    const limitId = String(entry?.metered_feature ?? entry?.meteredFeature ?? entry?.limit_id ?? entry?.limitId ?? '').trim();
+    if (!limitId || limitId === 'codex') continue;
+    const snapshot = codexUsageRateLimit(entry.rate_limit ?? entry.rateLimit ?? entry, {
+      limitId,
+      limitName: entry.limit_name ?? entry.limitName,
+      planType,
+      rateLimitReachedType
+    });
+    if (snapshot) rateLimitsByLimitId[limitId] = snapshot;
+  }
+
+  return {
+    rateLimits: main,
+    rateLimitsByLimitId,
+    rateLimitResetCredits: payload.rate_limit_reset_credits ?? payload.rateLimitResetCredits ?? null
+  };
+}
+
+async function fetchCodexUsage(deps = {}) {
+  const read = deps.readFileSync || fs.readFileSync;
+  const authPath = deps.codexAuthPath || codexAuthPath(deps.env || process.env);
+  let auth;
+  try {
+    auth = JSON.parse(read(authPath, 'utf8'));
+  } catch (_) {
+    throw errorWithStatus('notConfigured', 'Codex auth.json not found');
+  }
+  const accessToken = codexAccessTokenFromAuth(auth);
+  if (!accessToken) throw errorWithStatus('unauthorized', 'Codex access token not found');
+
+  const fetchFn = deps.fetch || fetch;
+  const timeoutMs = Number(deps.codexUsageTimeoutMs || 4000);
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  const url = `${codexChatGptBaseUrl(deps)}${CODEX_USAGE_PATH}`;
+  const accountId = deps.codexAccountId || codexProviderAccountIdFromAuth(auth);
+  try {
+    const response = await fetchFn(url, {
+      method: 'GET',
+      headers: codexOAuthHeaders(accessToken, accountId),
+      ...(controller ? { signal: controller.signal } : {})
+    });
+    if (!response.ok) {
+      const status = response.status === 401 || response.status === 403 ? 'unauthorized'
+        : response.status === 429 ? 'sourceRateLimited' : 'unavailable';
+      throw errorWithStatus(status, `wham/usage returned ${response.status}`);
+    }
+    return parseCodexUsagePayload(await response.json());
+  } catch (error) {
+    if (error?.name === 'AbortError') throw errorWithStatus('unavailable', 'wham/usage timed out');
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function readCodexUsage(deps = {}) {
+  if (deps.readCodexUsage) return deps.readCodexUsage(deps);
+  return fetchCodexUsage(deps);
+}
+
+function stricterCodexRateLimitWindow(first, second, nowMs = Date.now()) {
+  if (!first) return second;
+  if (!second) return first;
+  const firstReset = codexWindowResetMs(first);
+  const secondReset = codexWindowResetMs(second);
+  if (firstReset !== null && firstReset <= nowMs && secondReset !== null && secondReset > nowMs) return second;
+  if (secondReset !== null && secondReset <= nowMs && firstReset !== null && firstReset > nowMs) return first;
+
+  const firstUsed = codexWindowUsedPercent(first);
+  const secondUsed = codexWindowUsedPercent(second);
+  if (firstUsed !== null && secondUsed !== null && firstUsed !== secondUsed) {
+    return firstUsed > secondUsed
+      ? canonicalCodexWindow(first, second)
+      : canonicalCodexWindow(second, first);
+  }
+  if (firstReset !== null && secondReset !== null && firstReset !== secondReset) {
+    return firstReset < secondReset
+      ? canonicalCodexWindow(first, second)
+      : canonicalCodexWindow(second, first);
+  }
+  return canonicalCodexWindow(second, first);
+}
+
+async function withCodexOAuthUsage(payload, deps = {}, nowMs = Date.now()) {
+  try {
+    const usage = await readCodexUsage(deps);
+    const rpcRateLimits = codexRateLimitSnapshot(payload);
+    const oauthRateLimits = usage?.rateLimits || {};
+    const mergedRateLimits = {
+      ...rpcRateLimits,
+      ...oauthRateLimits,
+      planType: oauthRateLimits.planType ?? oauthRateLimits.plan_type ?? rpcRateLimits.planType ?? rpcRateLimits.plan_type,
+      primary: stricterCodexRateLimitWindow(rpcRateLimits.primary, oauthRateLimits.primary, nowMs),
+      secondary: stricterCodexRateLimitWindow(rpcRateLimits.secondary, oauthRateLimits.secondary, nowMs)
+    };
+    return {
+      ...payload,
+      rateLimits: mergedRateLimits,
+      rateLimitsByLimitId: {
+        ...usage.rateLimitsByLimitId,
+        codex: mergedRateLimits
+      },
+      rateLimitResetCredits: mergeCodexResetCredits(usage.rateLimitResetCredits, codexResetCreditsSnapshot(payload))
+    };
+  } catch (_) {
+    return payload;
+  }
 }
 
 function codexChatGptBaseUrl(deps = {}) {
@@ -1267,17 +1448,9 @@ async function fetchCodexResetCredits(deps = {}) {
   const url = `${codexChatGptBaseUrl(deps)}${CODEX_RESET_CREDITS_PATH}`;
   const accountId = deps.codexAccountId || codexProviderAccountIdFromAuth(auth);
   try {
-    const headers = {
-      authorization: `Bearer ${accessToken}`,
-      accept: 'application/json',
-      'user-agent': TOKEN_MONITOR_USER_AGENT,
-      'openai-beta': 'codex-1',
-      originator: 'Codex Desktop'
-    };
-    if (accountId) headers['chatgpt-account-id'] = accountId;
     const response = await fetchFn(url, {
       method: 'GET',
-      headers,
+      headers: codexOAuthHeaders(accessToken, accountId),
       ...(controller ? { signal: controller.signal } : {})
     });
     if (!response.ok) {
@@ -1900,7 +2073,9 @@ async function fetchManagedCodexAccountLimits(account, _options = {}, deps = {})
   const reader = deps.readCodexRpc || readCodexRpc;
   const accountKeySeed = account.accountKey || account.email || account.id || account.homePath;
   try {
-    const payload = await withCodexOAuthResetCredits(await reader(accountDeps), accountDeps);
+    let payload = await reader(accountDeps);
+    payload = await withCodexOAuthUsage(payload, accountDeps, nowMs);
+    payload = await withCodexOAuthResetCredits(payload, accountDeps);
     const email = payload.account?.email || account.email;
     const identity = account.accountKey || email || account.id || account.homePath;
     return mapCodexRateLimitsToProvider(payload, {
@@ -2055,7 +2230,9 @@ function codexWindowResetMs(window) {
 }
 
 function codexWindowUsedPercent(window) {
-  const value = Number(window?.usedPercent ?? window?.used_percent);
+  const raw = window?.usedPercent ?? window?.used_percent;
+  if (raw === null || raw === undefined) return null;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : null;
 }
 
@@ -2142,8 +2319,13 @@ function preferLatestCodexSessionRateLimits(payload, deps = {}, nowMs = Date.now
 
 async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now()) {
   const reader = deps.readCodexRpc || readCodexRpc;
-  let payload = await withCodexOAuthResetCredits(await reader(deps), deps);
+  let payload = await reader(deps);
   payload = preferLatestCodexSessionRateLimits(payload, deps, nowMs);
+  // Take an independent account-scoped sample with an explicit ChatGPT account
+  // id, then keep the stricter active window across it and the RPC result. Both
+  // upstream paths can intermittently return an alternate lower quota bucket.
+  payload = await withCodexOAuthUsage(payload, deps, nowMs);
+  payload = await withCodexOAuthResetCredits(payload, deps);
   const authIdentity = readLiveCodexIdentity(deps);
   const email = authIdentity.email || payload.account?.email || '';
   const fallbackSeed = payload.account?.email || `${payload.account?.type || 'account'}:${payload.account?.planType || ''}:${deps.codexAuthPath || codexAuthPath(deps.env || process.env)}`;

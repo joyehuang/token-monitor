@@ -320,6 +320,37 @@ function makeIdToken(payload) {
 // The live account's auth.json is never read in tests unless a test opts in.
 const noLiveAuth = { readFileSync: () => { throw new Error('no auth.json'); } };
 
+function codexOAuthUsageTestDeps({ usageResponse, usageStatus = 200, usageRequests = [] }) {
+  const idToken = makeIdToken({ email: 'live@example.com', chatgpt_account_id: 'acct_live' });
+  return {
+    env: { PATH: '/usr/bin', CODEX_HOME: '/tmp/token-monitor-codex/live' },
+    codexAuthPath: '/tmp/token-monitor-codex/live/auth.json',
+    readFileSync: (file) => {
+      if (String(file).endsWith('auth.json')) {
+        return JSON.stringify({ tokens: { access_token: 'access-token', id_token: idToken } });
+      }
+      if (String(file).endsWith('config.toml')) {
+        return 'chatgpt_base_url = "https://chatgpt.com/backend-api/"\n';
+      }
+      throw new Error(`unexpected read ${file}`);
+    },
+    fetch: async (url, options) => {
+      if (url.endsWith('/wham/usage')) {
+        usageRequests.push({ url, options });
+        return {
+          ok: usageStatus >= 200 && usageStatus < 300,
+          status: usageStatus,
+          json: async () => usageResponse
+        };
+      }
+      if (url.endsWith('/wham/rate-limit-reset-credits')) {
+        return { ok: true, status: 200, json: async () => ({ available_count: 0, credits: [] }) };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }
+  };
+}
+
 test('fetchCodexLimits returns one provider per managed Codex account', async () => {
   const seenHomes = [];
   const providers = await fetchCodexLimits({
@@ -893,12 +924,13 @@ test('fetchCodexLimits augments reset credits expiry from the Codex OAuth endpoi
     })
   });
 
-  assert.equal(fetches.length, 1);
-  assert.equal(fetches[0].url, 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits');
-  assert.equal(fetches[0].options.headers.authorization, 'Bearer access-token');
-  assert.equal(fetches[0].options.headers['chatgpt-account-id'], 'acct_live');
-  assert.equal(fetches[0].options.headers['openai-beta'], 'codex-1');
-  assert.equal(fetches[0].options.headers.originator, 'Codex Desktop');
+  const resetCreditsFetch = fetches.find(({ url }) => url.endsWith('/wham/rate-limit-reset-credits'));
+  assert.ok(resetCreditsFetch);
+  assert.equal(resetCreditsFetch.url, 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits');
+  assert.equal(resetCreditsFetch.options.headers.authorization, 'Bearer access-token');
+  assert.equal(resetCreditsFetch.options.headers['chatgpt-account-id'], 'acct_live');
+  assert.equal(resetCreditsFetch.options.headers['openai-beta'], 'codex-1');
+  assert.equal(resetCreditsFetch.options.headers.originator, 'Codex Desktop');
   assert.deepEqual(providers.resetCredits, {
     availableCount: 2,
     nextExpiresAt: '2026-07-12T04:03:43.263Z',
@@ -907,4 +939,165 @@ test('fetchCodexLimits augments reset credits expiry from the Codex OAuth endpoi
       '2026-07-18T00:39:53.731Z'
     ]
   });
+});
+
+test('fetchCodexLimits prefers account-scoped OAuth usage over conflicting RPC and session snapshots', async () => {
+  const usageRequests = [];
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-07-10T03:55:00Z'),
+    ...codexOAuthUsageTestDeps({
+      usageRequests,
+      usageResponse: {
+        plan_type: 'plus',
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          primary_window: {
+            used_percent: 69,
+            limit_window_seconds: 18_000,
+            reset_after_seconds: 14_180,
+            reset_at: 1_783_669_880
+          },
+          secondary_window: {
+            used_percent: 11,
+            limit_window_seconds: 604_800,
+            reset_after_seconds: 600_380,
+            reset_at: 1_784_256_680
+          }
+        }
+      }
+    }),
+    readCodexRpc: async () => ({
+      account: { planType: 'plus' },
+      rateLimits: {
+        primary: { usedPercent: 8, resetsAt: 1_783_671_726, windowDurationMins: 300 },
+        secondary: { usedPercent: 1, resetsAt: 1_784_258_526, windowDurationMins: 10080 }
+      },
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => ({
+      timestampMs: Date.parse('2026-07-10T03:54:30Z'),
+      rateLimits: {
+        primary: { used_percent: 97, resets_at: 1_783_672_000, window_minutes: 300 },
+        secondary: { used_percent: 22, resets_at: 1_784_258_800, window_minutes: 10080 }
+      }
+    })
+  });
+
+  assert.equal(usageRequests.length, 1);
+  assert.equal(usageRequests[0].url, 'https://chatgpt.com/backend-api/wham/usage');
+  assert.equal(usageRequests[0].options.headers.authorization, 'Bearer access-token');
+  assert.equal(usageRequests[0].options.headers['chatgpt-account-id'], 'acct_live');
+  assert.deepEqual(provider.windows.map((window) => [window.kind, window.usedPercent, window.resetsAt]), [
+    ['session', 69, '2026-07-10T07:51:20.000Z'],
+    ['weekly', 11, '2026-07-17T02:51:20.000Z']
+  ]);
+});
+
+test('fetchCodexLimits keeps the stricter RPC window when OAuth returns the lower alternate', async () => {
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-07-10T03:55:00Z'),
+    ...codexOAuthUsageTestDeps({
+      usageResponse: {
+        plan_type: 'plus',
+        rate_limit: {
+          primary_window: { used_percent: 8, limit_window_seconds: 18_000, reset_at: 1_783_671_726 },
+          secondary_window: { used_percent: 1, limit_window_seconds: 604_800, reset_at: 1_784_258_526 }
+        }
+      }
+    }),
+    readCodexRpc: async () => ({
+      account: { planType: 'plus' },
+      rateLimits: {
+        primary: { usedPercent: 69, resetsAt: 1_783_669_880, windowDurationMins: 300 },
+        secondary: { usedPercent: 11, resetsAt: 1_784_256_680, windowDurationMins: 10080 }
+      },
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => null
+  });
+
+  assert.deepEqual(provider.windows.map((window) => [window.kind, window.usedPercent, window.resetsAt]), [
+    ['session', 69, '2026-07-10T07:51:20.000Z'],
+    ['weekly', 11, '2026-07-17T02:51:20.000Z']
+  ]);
+});
+
+test('fetchCodexLimits falls back to RPC when account-scoped OAuth usage fails', async () => {
+  const usageRequests = [];
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-07-10T03:55:00Z'),
+    ...codexOAuthUsageTestDeps({ usageRequests, usageResponse: {}, usageStatus: 503 }),
+    readCodexRpc: async () => ({
+      account: { planType: 'plus' },
+      rateLimits: {
+        primary: { usedPercent: 43, resetsAt: '2026-07-10T07:51:20Z', windowDurationMins: 300 },
+        secondary: { usedPercent: 7, resetsAt: '2026-07-17T02:51:20Z', windowDurationMins: 10080 }
+      },
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => null
+  });
+
+  assert.deepEqual(usageRequests.map(({ url }) => url), ['https://chatgpt.com/backend-api/wham/usage']);
+  assert.deepEqual(provider.windows.map((window) => [window.kind, window.usedPercent, window.resetsAt]), [
+    ['session', 43, '2026-07-10T07:51:20.000Z'],
+    ['weekly', 7, '2026-07-17T02:51:20.000Z']
+  ]);
+});
+
+test('fetchCodexLimits maps snake_case OAuth usage windows to 5h and weekly resets', async () => {
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-07-10T04:00:00Z'),
+    ...codexOAuthUsageTestDeps({
+      usageResponse: {
+        plan_type: 'pro',
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          primary_window: {
+            used_percent: 37,
+            limit_window_seconds: 18_000,
+            reset_after_seconds: 18_000,
+            reset_at: 1_783_674_000
+          },
+          secondary_window: {
+            used_percent: 6,
+            limit_window_seconds: 604_800,
+            reset_after_seconds: 604_800,
+            reset_at: 1_784_278_800
+          }
+        }
+      }
+    }),
+    readCodexRpc: async () => ({
+      account: { planType: 'plus' },
+      rateLimits: {},
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => null
+  });
+
+  assert.deepEqual(provider.windows.map((window) => ({
+    kind: window.kind,
+    usedPercent: window.usedPercent,
+    remainingPercent: window.remainingPercent,
+    resetsAt: window.resetsAt,
+    windowMinutes: window.windowMinutes
+  })), [
+    {
+      kind: 'session',
+      usedPercent: 37,
+      remainingPercent: 63,
+      resetsAt: new Date(1_783_674_000 * 1000).toISOString(),
+      windowMinutes: 300
+    },
+    {
+      kind: 'weekly',
+      usedPercent: 6,
+      remainingPercent: 94,
+      resetsAt: new Date(1_784_278_800 * 1000).toISOString(),
+      windowMinutes: 10080
+    }
+  ]);
 });

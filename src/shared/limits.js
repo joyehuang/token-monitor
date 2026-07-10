@@ -7,6 +7,7 @@ const VALID_SOURCES = new Set(['oauth', 'cli', 'web', 'rpc', 'local', 'api']);
 const VALID_SOURCE_DETAILS = new Set(['app', 'cli', 'managed', 'unknown']);
 const WINDOW_ORDER = ['session', 'weekly', 'billing'];
 const CODEX_TRANSIENT_WINDOW_RETENTION_MS = 10 * 60 * 1000;
+const CODEX_RESET_ANCHOR_TOLERANCE_MS = 2 * 1000;
 
 function asNumber(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -281,14 +282,72 @@ function providerWindowRank(provider) {
 
 function codexProviderIdentityKeys(provider) {
   if (provider?.provider !== 'codex') return [];
-  const keys = [];
-  if (provider.accountKey) keys.push(`key:${provider.accountKey}`);
-  if (provider.accountEmail) keys.push(`email:${provider.accountEmail}`);
-  return keys;
+  if (provider.accountKey) return [`key:${provider.accountKey}`];
+  return provider.accountEmail ? [`email:${provider.accountEmail}`] : [];
 }
 
 function hasProviderWindows(provider) {
   return Array.isArray(provider?.windows) && provider.windows.length > 0;
+}
+
+function windowUsedPercent(window) {
+  if (window?.usedPercent === null || window?.usedPercent === undefined) return null;
+  const value = Number(window?.usedPercent);
+  return Number.isFinite(value) ? value : null;
+}
+
+function earlierResetWindow(first, second) {
+  const firstReset = timestampMs(first?.resetsAt);
+  const secondReset = timestampMs(second?.resetsAt);
+  if (firstReset && secondReset && firstReset !== secondReset) return firstReset < secondReset ? first : second;
+  return first;
+}
+
+// Codex's upstream usage endpoint can intermittently return different non-empty
+// quota snapshots for the same authenticated account. Within one active quota
+// cycle usage is monotonic, so keep the stricter observed window until its reset
+// passes. This prevents a transient alternate snapshot from turning 84% used
+// into 10% used (and changing the reset anchor) on the next refresh.
+function stableCodexWindow(previous, current, nowMs) {
+  if (!previous) return current;
+  if (!current) {
+    const previousReset = timestampMs(previous.resetsAt);
+    return previousReset && previousReset <= nowMs ? null : previous;
+  }
+
+  const previousReset = timestampMs(previous.resetsAt);
+  const currentReset = timestampMs(current.resetsAt);
+  const previousUsed = windowUsedPercent(previous);
+  const currentUsed = windowUsedPercent(current);
+
+  if (previousReset && previousReset <= nowMs) return current;
+  if (currentReset && currentReset <= nowMs && (!previousReset || previousReset > nowMs)) return previous;
+
+  const sameReset = previousReset && currentReset
+    && Math.abs(previousReset - currentReset) <= CODEX_RESET_ANCHOR_TOLERANCE_MS;
+  const bothFuture = previousReset > nowMs && currentReset > nowMs;
+  if (sameReset || bothFuture || (!previousReset && !currentReset)) {
+    if (previousUsed !== null && currentUsed !== null && previousUsed !== currentUsed) {
+      return previousUsed > currentUsed ? previous : current;
+    }
+    return bothFuture ? earlierResetWindow(previous, current) : current;
+  }
+
+  if (previousReset > nowMs && !currentReset) return previous;
+  if (!previousReset && currentReset > nowMs) {
+    if (previousUsed !== null && currentUsed !== null && previousUsed > currentUsed) return previous;
+    return current;
+  }
+  return current;
+}
+
+function mergeStableCodexWindows(previousProvider, currentProvider, nowMs) {
+  const previousByKind = new Map(previousProvider.windows.map((window) => [window.kind, window]));
+  const currentByKind = new Map(currentProvider.windows.map((window) => [window.kind, window]));
+  const kinds = new Set([...previousByKind.keys(), ...currentByKind.keys()]);
+  return Array.from(kinds, (kind) => stableCodexWindow(previousByKind.get(kind), currentByKind.get(kind), nowMs))
+    .filter(Boolean)
+    .sort((a, b) => WINDOW_ORDER.indexOf(a.kind) - WINDOW_ORDER.indexOf(b.kind));
 }
 
 function mergeCodexTransientWindows(previousInput, currentInput, nowMs = Date.now(), retentionMs = CODEX_TRANSIENT_WINDOW_RETENTION_MS) {
@@ -311,15 +370,25 @@ function mergeCodexTransientWindows(previousInput, currentInput, nowMs = Date.no
   return {
     ...current,
     providers: current.providers.map((provider) => {
-      if (provider.provider !== 'codex' || provider.status !== 'ok' || hasProviderWindows(provider)) return provider;
+      if (provider.provider !== 'codex' || provider.status !== 'ok') return provider;
       const previousProvider = codexProviderIdentityKeys(provider)
         .map((key) => previousByIdentity.get(key))
         .find(Boolean);
       if (!previousProvider) return provider;
+      if (hasProviderWindows(provider)) {
+        return {
+          ...provider,
+          windows: mergeStableCodexWindows(previousProvider, provider, currentMs)
+        };
+      }
+      const retainedWindows = previousProvider.windows
+        .map((window) => stableCodexWindow(window, null, currentMs))
+        .filter(Boolean);
+      if (retainedWindows.length === 0) return provider;
       return {
         ...provider,
         updatedAt: previousProvider.updatedAt || provider.updatedAt,
-        windows: previousProvider.windows.map((window) => ({ ...window }))
+        windows: retainedWindows.map((window) => ({ ...window }))
       };
     })
   };
