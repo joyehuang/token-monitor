@@ -351,6 +351,7 @@ test('a slow limits-only update does not block a full usage tick', async () => {
     scheduledLimitsTimer = null;
     const limitsRefresh = timer.callback();
     await limitsUpdateStarted;
+    assert.equal(scheduledLimitsTimer.delay, 60000);
 
     let timeout;
     try {

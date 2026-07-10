@@ -1023,10 +1023,10 @@ function startCollector(options) {
 
   function scheduleLimitsRefresh() {
     if (stopped || !limitsCollector) return;
-    limitsTimer = setLimitsTimeout(async () => {
+    limitsTimer = setLimitsTimeout(() => {
       limitsTimer = null;
-      await refreshLimitsOnly();
       scheduleLimitsRefresh();
+      return refreshLimitsOnly();
     }, limitsRefreshMs);
   }
 
