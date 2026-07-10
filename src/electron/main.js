@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, screen, session, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, safeStorage, screen, session, shell } = require('electron');
 const { defaultDeviceId, generateHubSecret, lanIpv4Addresses, loadDotEnv, pidFilePath, sharedDataDir } = require('../shared/config');
 const { installSafeStdout } = require('../shared/safeStdio');
 const { appVersion } = require('../shared/appVersion');
@@ -97,11 +97,22 @@ const {
   moveFloatingBubbleBounds
 } = require('./floatingBubble');
 const { applyWindowsChrome } = require('./windowsChrome');
+const {
+  CLAUDE_DESKTOP_AUTH_HELPER_FLAG,
+  helperUserDataFromArgs,
+  readClaudeDesktopCredentials,
+  readClaudeDesktopCredentialsInHelper
+} = require('./claudeDesktopAuth');
 
 if (!app.isPackaged) loadDotEnv();
 
 const APP_NAME = 'Token Monitor';
 const APP_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+const claudeDesktopAuthHelperMode = process.argv.includes(CLAUDE_DESKTOP_AUTH_HELPER_FLAG);
+const claudeDesktopHelperUserData = helperUserDataFromArgs(process.argv);
+if (claudeDesktopAuthHelperMode && claudeDesktopHelperUserData) {
+  app.setPath('userData', claudeDesktopHelperUserData);
+}
 
 const DEFAULT_WINDOW = { width: 360, height: 500 };
 const WINDOW_LIMITS = { minWidth: 240, minHeight: 140, maxWidth: 1200, maxHeight: 1400 };
@@ -140,8 +151,12 @@ const STATUS_PAGE_HOSTS = new Set(SERVICE_STATUS_PROVIDERS.map((provider) => new
 app.setName(APP_NAME);
 if (process.platform === 'win32') app.setAppUserModelId('com.javis.tokenmonitor');
 
-const gotLock = app.requestSingleInstanceLock();
+const gotLock = claudeDesktopAuthHelperMode || app.requestSingleInstanceLock();
 if (!gotLock) app.exit(0);
+
+const electronLimitCollectorDeps = {
+  readClaudeDesktopCredentials: () => readClaudeDesktopCredentials({ app })
+};
 
 function defaultSettings() {
   const envHubUrl = process.env.TOKEN_MONITOR_HUB_URL || '';
@@ -1304,6 +1319,7 @@ function startSyncCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: async (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
       lastCollectedDevice = carryDeviceHistory(
@@ -1354,6 +1370,7 @@ function startHostCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
       lastCollectedDevice = carryDeviceHistory(
@@ -1554,6 +1571,7 @@ function startLocalCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: (summary, reason) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
       // History only rides along on gated ticks; carry the last known history
@@ -2519,7 +2537,18 @@ function rebuildWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (claudeDesktopAuthHelperMode) {
+    try {
+      const credentials = readClaudeDesktopCredentialsInHelper(claudeDesktopHelperUserData, safeStorage);
+      await new Promise((resolve) => process.stdout.write(JSON.stringify(credentials), resolve));
+      app.exit(0);
+    } catch (error) {
+      console.error(error.message);
+      app.exit(1);
+    }
+    return;
+  }
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_ICON_PATH);
   ensureSettingsLoaded();
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

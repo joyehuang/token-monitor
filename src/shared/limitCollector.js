@@ -354,6 +354,20 @@ async function readClaudeCredentials(deps = {}) {
     }
   }
 
+  if ((deps.platform || process.platform) === 'win32' && deps.readClaudeDesktopCredentials) {
+    const oauth = await deps.readClaudeDesktopCredentials().catch(() => null);
+    const credentials = claudeCredentialsFromOauth(oauth, {
+      source: 'desktop',
+      identity: oauth?.identity || 'desktop:claude-code'
+    });
+    if (credentials) {
+      // Claude Desktop owns refresh-token rotation. Re-read its cache on the
+      // next probe instead of refreshing a token we cannot persist back safely.
+      credentials.refreshToken = null;
+      return credentials;
+    }
+  }
+
   if ((deps.platform || process.platform) === 'darwin' && deps.readMacKeychain !== false) {
     const text = await readMacKeychainSecret('Claude Code-credentials', deps).catch(() => '');
     if (text) {

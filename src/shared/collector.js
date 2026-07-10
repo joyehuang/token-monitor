@@ -757,7 +757,9 @@ function startCollector(options) {
   const initialLimits = limitsEnabled !== false
     ? (options.initialLimits || readJson(limitsCachePath, null))
     : null;
-  const limitsCollector = limitsEnabled !== false ? createLimitsCollector({ ...options, initialLimits }) : null;
+  const limitsCollector = limitsEnabled !== false
+    ? createLimitsCollector({ ...options, initialLimits }, options.limitCollectorDeps)
+    : null;
   let persistedLimitsSignature = initialLimits ? JSON.stringify(initialLimits) : '';
   const limitsRefreshMs = normalizeLimitsRefreshMs(options.limitsRefreshMs);
   const setLimitsTimeout = options.setLimitsTimeout || setTimeout;

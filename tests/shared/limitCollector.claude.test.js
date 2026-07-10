@@ -175,6 +175,44 @@ test('Claude limits read Windows Credential Manager credentials when credential 
   assert.equal(provider.windows[0].usedPercent, 12);
 });
 
+test('Claude limits read the Windows Desktop token when CLI credentials are absent', async () => {
+  const provider = await fetchClaudeLimits({}, {
+    platform: 'win32',
+    now: () => Date.parse('2026-06-11T00:00:00Z'),
+    claudeCredentialPath: 'C:\\Users\\Javis\\.claude\\.credentials.json',
+    stat: async () => {
+      const error = new Error('missing');
+      error.code = 'ENOENT';
+      throw error;
+    },
+    readWindowsCredentialSecret: async () => '',
+    readClaudeDesktopCredentials: async () => ({
+      accessToken: 'desktop-token',
+      expiresAt: Date.parse('2026-06-12T00:00:00Z'),
+      subscriptionType: 'max',
+      rateLimitTier: 'default_claude_max_5x',
+      identity: 'desktop:account'
+    }),
+    fetch: async (_url, options) => {
+      assert.equal(options.headers.authorization, 'Bearer desktop-token');
+      return {
+        ok: true,
+        json: async () => ({
+          five_hour: {
+            utilization: 21,
+            resets_at: '2026-06-11T05:00:00Z'
+          }
+        })
+      };
+    }
+  });
+
+  assert.equal(provider.provider, 'claude');
+  assert.equal(provider.status, 'ok');
+  assert.equal(provider.accountLabel, 'Max 5x');
+  assert.equal(provider.windows[0].usedPercent, 21);
+});
+
 test('Claude OAuth usage mapping accepts camelCase response fields', async () => {
   const provider = await fetchClaudeLimits({}, {
     platform: 'linux',
