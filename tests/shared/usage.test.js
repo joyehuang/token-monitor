@@ -118,7 +118,11 @@ test('aggregateDevices does not let an orphaned stale device id override the cur
 });
 
 test('mergeDeviceRecord supports limitsOnly updates without wiping usage periods', () => {
-  const existing = recordWithLimits();
+  const existing = recordWithLimits({
+    trackedClients: ['cursor'],
+    clientStatus: { cursor: 'active' },
+    history: { daily: [{ date: '2026-05-27', totalTokens: 1 }] }
+  });
   const incoming = {
     deviceId: 'macbook',
     receivedAt: '2026-05-27T00:02:00.000Z',
@@ -132,6 +136,11 @@ test('mergeDeviceRecord supports limitsOnly updates without wiping usage periods
 
   const merged = mergeDeviceRecord(existing, incoming);
   assert.equal(merged.periods.today.totalTokens, 1);
+  assert.equal(merged.updatedAt, '2026-05-27T00:00:00.000Z');
+  assert.equal(merged.receivedAt, '2026-05-27T00:02:00.000Z');
+  assert.deepEqual(merged.trackedClients, ['cursor']);
+  assert.deepEqual(merged.clientStatus, { cursor: 'active' });
+  assert.deepEqual(merged.history.daily, [{ date: '2026-05-27', totalTokens: 1 }]);
   assert.equal(merged.limits.providers[0].status, 'unauthorized');
 });
 

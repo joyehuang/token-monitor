@@ -403,6 +403,45 @@ test('createLimitsCollector retains recent Codex quota windows across one empty 
   assert.equal(second.providers[0].updatedAt, '2026-06-01T00:00:00.000Z');
 });
 
+test('createLimitsCollector confirms a new Codex reset across three refreshes', async () => {
+  const previous = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-14T10:25:00.000Z');
+  previous.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
+  const alternate = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:41:00.000Z');
+  alternate.windows[0].resetsAt = '2026-06-14T15:22:06.000Z';
+  let calls = 0;
+  const collector = createLimitsCollector({
+    limitProviders: 'codex',
+    limitsRefreshMs: 60_000,
+    initialLimits: {
+      updatedAt: '2026-06-14T10:25:00.000Z',
+      refreshMs: 60_000,
+      providers: [previous]
+    }
+  }, {
+    now: () => Date.parse('2026-06-14T10:41:00.000Z'),
+    providerFetchers: {
+      codex: async () => {
+        calls += 1;
+        return calls <= 3 ? alternate : previous;
+      }
+    }
+  });
+
+  const first = await collector.snapshot(true);
+  const second = await collector.snapshot(true);
+  const third = await collector.snapshot(true);
+  const fourth = await collector.snapshot(true);
+
+  assert.equal(first.providers[0].windows[0].usedPercent, 84);
+  assert.equal(second.providers[0].windows[0].usedPercent, 84);
+  assert.equal(second.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
+  assert.equal(third.providers[0].windows[0].usedPercent, 10);
+  assert.equal(third.providers[0].windows[0].remainingPercent, 90);
+  assert.equal(third.providers[0].windows[0].resetsAt, '2026-06-14T15:22:06.000Z');
+  assert.equal(fourth.providers[0].windows[0].usedPercent, 10);
+  assert.equal(fourth.providers[0].windows[0].resetsAt, '2026-06-14T15:22:06.000Z');
+});
+
 test('fetchCodexLimits skips disabled managed Codex accounts', async () => {
   const seenHomes = [];
   const providers = await fetchCodexLimits({

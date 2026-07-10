@@ -276,6 +276,134 @@ test('mergeCodexTransientWindows can recover when the first Codex window was the
   assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T15:51:20.000Z');
 });
 
+test('mergeCodexTransientWindows does not accept an unconfirmed early Codex reset', () => {
+  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 0, '2026-06-14T10:00:00.000Z');
+  previousProvider.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
+  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 96, '2026-06-14T10:01:00.000Z');
+  currentProvider.windows[0].resetsAt = '2026-06-14T15:00:30.000Z';
+
+  const merged = mergeCodexTransientWindows(
+    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
+    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
+    Date.parse('2026-06-14T10:01:00.000Z')
+  );
+
+  assert.equal(merged.providers[0].windows[0].usedPercent, 100);
+  assert.equal(merged.providers[0].windows[0].remainingPercent, 0);
+  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
+});
+
+test('mergeCodexTransientWindows accepts an early reset after three consecutive observations', () => {
+  const transitionState = new Map();
+  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 0, '2026-06-14T10:00:00.000Z');
+  previousProvider.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
+  let accepted = { updatedAt: previousProvider.updatedAt, providers: [previousProvider] };
+
+  for (let observation = 1; observation <= 3; observation += 1) {
+    const updatedAt = `2026-06-14T10:0${observation}:00.000Z`;
+    const currentProvider = codexProvider(
+      'sha256:codex-a',
+      'a@example.com',
+      97 - observation,
+      updatedAt
+    );
+    currentProvider.windows[0].resetsAt = '2026-06-14T15:00:30.000Z';
+    accepted = mergeCodexTransientWindows(
+      accepted,
+      { updatedAt, providers: [currentProvider] },
+      Date.parse(updatedAt),
+      undefined,
+      transitionState
+    );
+    if (observation < 3) {
+      assert.equal(accepted.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
+    }
+  }
+
+  assert.equal(accepted.providers[0].windows[0].usedPercent, 6);
+  assert.equal(accepted.providers[0].windows[0].remainingPercent, 94);
+  assert.equal(accepted.providers[0].windows[0].resetsAt, '2026-06-14T15:00:30.000Z');
+
+  const oldAgain = { ...previousProvider, updatedAt: '2026-06-14T10:04:00.000Z' };
+  accepted = mergeCodexTransientWindows(
+    accepted,
+    { updatedAt: oldAgain.updatedAt, providers: [oldAgain] },
+    Date.parse(oldAgain.updatedAt),
+    undefined,
+    transitionState
+  );
+  assert.equal(accepted.providers[0].windows[0].usedPercent, 6);
+  assert.equal(accepted.providers[0].windows[0].resetsAt, '2026-06-14T15:00:30.000Z');
+});
+
+test('mergeCodexTransientWindows resets early-reset confirmation when the old window returns', () => {
+  const transitionState = new Map();
+  const oldProvider = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-14T10:00:00.000Z');
+  oldProvider.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
+  const alternate = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:01:00.000Z');
+  alternate.windows[0].resetsAt = '2026-06-14T15:22:06.000Z';
+  const first = mergeCodexTransientWindows(
+    { updatedAt: oldProvider.updatedAt, providers: [oldProvider] },
+    { updatedAt: alternate.updatedAt, providers: [alternate] },
+    Date.parse(alternate.updatedAt),
+    undefined,
+    transitionState
+  );
+  const oldAgain = { ...oldProvider, updatedAt: '2026-06-14T10:02:00.000Z' };
+  const second = mergeCodexTransientWindows(
+    first,
+    { updatedAt: oldAgain.updatedAt, providers: [oldAgain] },
+    Date.parse(oldAgain.updatedAt),
+    undefined,
+    transitionState
+  );
+  const alternateAgain = { ...alternate, updatedAt: '2026-06-14T10:03:00.000Z' };
+  const third = mergeCodexTransientWindows(
+    second,
+    { updatedAt: alternateAgain.updatedAt, providers: [alternateAgain] },
+    Date.parse(alternateAgain.updatedAt),
+    undefined,
+    transitionState
+  );
+
+  assert.equal(third.providers[0].windows[0].usedPercent, 84);
+  assert.equal(third.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
+  assert.equal(transitionState.values().next().value.confirmations, 1);
+});
+
+test('mergeCodexTransientWindows uses an older cached active window to reject a lower alternate', () => {
+  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-14T10:25:00.000Z');
+  previousProvider.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
+  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:31:00.000Z');
+  currentProvider.windows[0].resetsAt = '2026-06-14T15:22:06.000Z';
+
+  const merged = mergeCodexTransientWindows(
+    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
+    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
+    Date.parse('2026-06-14T10:31:00.000Z'),
+    5 * 60 * 1000
+  );
+
+  assert.equal(merged.providers[0].windows[0].usedPercent, 84);
+  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
+});
+
+test('mergeCodexTransientWindows ignores implausibly old active cache windows', () => {
+  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-01T10:00:00.000Z');
+  previousProvider.windows[0].resetsAt = '2026-07-15T14:51:20.000Z';
+  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:01:00.000Z');
+  currentProvider.windows[0].resetsAt = '2026-06-14T15:22:06.000Z';
+
+  const merged = mergeCodexTransientWindows(
+    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
+    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
+    Date.parse(currentProvider.updatedAt)
+  );
+
+  assert.equal(merged.providers[0].windows[0].usedPercent, 10);
+  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T15:22:06.000Z');
+});
+
 test('mergeCodexTransientWindows accepts lower Codex usage after the retained reset passes', () => {
   const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 1, '2026-06-14T09:59:00.000Z');
   previousProvider.windows[0].resetsAt = '2026-06-14T10:00:00.000Z';

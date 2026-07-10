@@ -647,8 +647,12 @@ function mergeDeviceRecord(existing, incoming) {
 
   const normalizedExisting = normalizeDeviceRecord(existing);
   if (incoming?.limitsOnly === true) {
-    normalizedIncoming.periods = normalizedExisting.periods;
-    if (hasOwn(normalizedExisting, 'periodWindows')) normalizedIncoming.periodWindows = normalizedExisting.periodWindows;
+    const limitsOnlyRecord = {
+      ...normalizedExisting,
+      receivedAt: normalizedIncoming.receivedAt || normalizedExisting.receivedAt
+    };
+    if (hasIncomingLimits) limitsOnlyRecord.limits = mergeDeviceLimits(normalizedExisting, normalizedIncoming);
+    return limitsOnlyRecord;
   }
   if (!hasIncomingLimits) normalizedIncoming.limits = normalizedExisting.limits;
   else normalizedIncoming.limits = mergeDeviceLimits(normalizedExisting, normalizedIncoming);

@@ -10,7 +10,8 @@ const {
   DEFAULT_LIMITS_REFRESH_MS,
   mergeCodexTransientWindows,
   normalizeLimitProvider,
-  normalizeLimitsSummary
+  normalizeLimitsSummary,
+  seedCodexTransitionState
 } = require('./limits');
 const cursorAuth = require('./cursorAuth');
 const cursorProbe = require('./cursorProbe');
@@ -2715,9 +2716,10 @@ async function collectLimitsOnce(options = {}, deps = {}) {
 
 function createLimitsCollector(options = {}, deps = {}) {
   const refreshMs = normalizeLimitsRefreshMs(options.limitsRefreshMs ?? options.refreshMs);
-  let cached = null;
+  let cached = options.initialLimits ? normalizeLimitsSummary(options.initialLimits) : null;
   let cachedAt = 0;
   let inFlight = null;
+  const codexTransitionState = seedCodexTransitionState(cached);
 
   async function snapshot(force = false) {
     const current = (deps.now || Date.now)();
@@ -2725,7 +2727,7 @@ function createLimitsCollector(options = {}, deps = {}) {
     if (inFlight) return inFlight;
     inFlight = collectLimitsOnce({ ...options, limitsRefreshMs: refreshMs }, deps)
       .then((summary) => {
-        cached = mergeCodexTransientWindows(cached, summary, current);
+        cached = mergeCodexTransientWindows(cached, summary, current, undefined, codexTransitionState);
         cachedAt = current;
         return cached;
       })

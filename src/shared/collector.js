@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const chokidar = require('chokidar');
 const semver = require('semver');
-const { readJson, sharedDataDir } = require('./config');
+const { readJson, sharedDataDir, writeJsonAtomic } = require('./config');
 const { appVersion } = require('./appVersion');
 const { normalizeClientsCsv } = require('./clientTracking');
 const { tokscalePackageNameForPlatform, tokscalePlatformKey } = require('./tokscalePlatform');
@@ -14,7 +14,7 @@ const { applyPeriodDelta, emptyPeriod, extractUsageFromTokscale, mergePeriods } 
 const { collectWslUsage: collectWslUsageImpl, emptyWslBundle, probeWslState: probeWslStateImpl } = require('./wslUsage');
 const { hermesProfileWatchDirs, resolveHermesHome, tokscaleEnvFromSpawnArgs } = require('./hermesProfiles');
 const { parseGraphResult, normalizeHistory } = require('./history');
-const { collectLimitsOnce, createLimitsCollector } = require('./limitCollector');
+const { collectLimitsOnce, createLimitsCollector, normalizeLimitsRefreshMs } = require('./limitCollector');
 const cursorAuth = require('./cursorAuth');
 const { findSessionFiles, codexSessionFile, codexArchivedSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
@@ -753,7 +753,15 @@ function startCollector(options) {
     onUpdate, onPreview, onError, logger
   } = options;
   const log = logger || (() => {});
-  const limitsCollector = limitsEnabled !== false ? createLimitsCollector(options) : null;
+  const limitsCachePath = options.limitsCachePath || path.join(sharedDataDir(), 'limits-cache.json');
+  const initialLimits = limitsEnabled !== false
+    ? (options.initialLimits || readJson(limitsCachePath, null))
+    : null;
+  const limitsCollector = limitsEnabled !== false ? createLimitsCollector({ ...options, initialLimits }) : null;
+  let persistedLimitsSignature = initialLimits ? JSON.stringify(initialLimits) : '';
+  const limitsRefreshMs = normalizeLimitsRefreshMs(options.limitsRefreshMs);
+  const setLimitsTimeout = options.setLimitsTimeout || setTimeout;
+  const clearLimitsTimeout = options.clearLimitsTimeout || clearTimeout;
   let tickInFlight = false;
   let tickPending = false;
   let pendingForceLimits = false;
@@ -770,6 +778,9 @@ function startCollector(options) {
   let pendingWaiters = [];
   let debounceTimer = null;
   let intervalTimer = null;
+  let limitsTimer = null;
+  let limitsTickPromise = null;
+  let latestSummary = null;
   let stopped = false;
   const watchers = [];
 
@@ -807,6 +818,16 @@ function startCollector(options) {
     const waiters = pendingWaiters;
     pendingWaiters = [];
     for (const resolve of waiters) resolve();
+  }
+
+  function persistLimits(limits) {
+    if (!limitsCollector || !limits) return;
+    const signature = JSON.stringify(limits);
+    if (signature === persistedLimitsSignature) return;
+    try {
+      writeJsonAtomic(limitsCachePath, limits);
+      persistedLimitsSignature = signature;
+    } catch (_) {}
   }
 
   async function performTick(reason, tickOptions = {}) {
@@ -908,6 +929,8 @@ function startCollector(options) {
         wslAnchor = captured.wslBundle;
         wslStatusAnchor = captured.wslStatus || null;
       }
+      persistLimits(summary.limits);
+      latestSummary = summary;
       await onUpdate?.(summary, reason);
     } catch (error) {
       if (stopped) return;
@@ -978,6 +1001,35 @@ function startCollector(options) {
     }
   }
 
+  async function refreshLimitsOnly() {
+    if (stopped || !limitsCollector || limitsTickPromise || tickInFlight) return;
+    limitsTickPromise = (async () => {
+      const limits = await limitsCollector.snapshot(true);
+      if (stopped || !latestSummary) return;
+      persistLimits(limits);
+      latestSummary = { ...latestSummary, limits };
+      await onUpdate?.({ ...latestSummary, limitsOnly: true }, 'limits');
+    })();
+    try {
+      await limitsTickPromise;
+    } catch (error) {
+      if (!stopped) {
+        if (onError) onError(error, 'limits'); else log(`limits refresh failed: ${error.message}`);
+      }
+    } finally {
+      limitsTickPromise = null;
+    }
+  }
+
+  function scheduleLimitsRefresh() {
+    if (stopped || !limitsCollector) return;
+    limitsTimer = setLimitsTimeout(async () => {
+      limitsTimer = null;
+      await refreshLimitsOnly();
+      scheduleLimitsRefresh();
+    }, limitsRefreshMs);
+  }
+
   function loop() {
     if (stopped) return;
     // Full scan at least once per FULL_SCAN_INTERVAL_MS so the anchor
@@ -997,6 +1049,7 @@ function startCollector(options) {
     stopped = true;
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     if (intervalTimer) { clearTimeout(intervalTimer); intervalTimer = null; }
+    if (limitsTimer) { clearLimitsTimeout(limitsTimer); limitsTimer = null; }
     for (const watcher of watchers) {
       try { watcher.close(); } catch (_) {}
     }
@@ -1005,6 +1058,7 @@ function startCollector(options) {
 
   setupWatchers();
   loop();
+  scheduleLimitsRefresh();
 
   return { stop, tick: (reason = 'manual', tickOptions = {}) => runTick(reason, tickOptions) };
 }
