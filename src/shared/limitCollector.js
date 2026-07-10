@@ -1669,7 +1669,16 @@ function codexCommandCandidates(env = process.env, platform = process.platform, 
   const pathApi = pathApiForPlatform(platform);
   const candidates = [];
   if (platform === 'darwin') {
-    candidates.push('/Applications/Codex.app/Contents/Resources/codex');
+    candidates.push(
+      '/Applications/ChatGPT.app/Contents/Resources/codex',
+      '/Applications/Codex.app/Contents/Resources/codex'
+    );
+    if (env.HOME) {
+      candidates.push(
+        path.join(env.HOME, 'Applications', 'ChatGPT.app', 'Contents', 'Resources', 'codex'),
+        path.join(env.HOME, 'Applications', 'Codex.app', 'Contents', 'Resources', 'codex')
+      );
+    }
   } else if (platform === 'win32') {
     const localAppData = envValue(env, 'LOCALAPPDATA');
     const programFiles = envValue(env, 'PROGRAMFILES');
@@ -1692,7 +1701,7 @@ function codexCommandSourceDetail(command, platform = process.platform) {
   if (!raw) return 'unknown';
   const normalized = raw.replace(/\\/g, '/').toLowerCase();
 
-  if (normalized.includes('/codex.app/')) return 'app';
+  if (normalized.includes('/codex.app/') || normalized.includes('/chatgpt.app/')) return 'app';
   if (platform === 'win32') {
     if (
       normalized.includes('/programs/codex/') ||
@@ -2041,13 +2050,88 @@ function readLatestCodexSessionRateLimits(deps = {}, nowMs = Date.now()) {
   return null;
 }
 
+function codexWindowResetMs(window) {
+  return normalizeExpiresAt(window?.resetsAt ?? window?.resets_at);
+}
+
+function codexWindowUsedPercent(window) {
+  const value = Number(window?.usedPercent ?? window?.used_percent);
+  return Number.isFinite(value) ? value : null;
+}
+
+function codexWindowMinutes(window) {
+  const value = Number(
+    window?.windowDurationMins
+    ?? window?.window_duration_mins
+    ?? window?.windowMinutes
+    ?? window?.window_minutes
+  );
+  return Number.isFinite(value) ? value : null;
+}
+
+function canonicalCodexWindow(selected, fallback) {
+  const usedPercent = codexWindowUsedPercent(selected);
+  const resetsAt = selected?.resetsAt ?? selected?.resets_at;
+  const windowDurationMins = codexWindowMinutes(selected);
+  return {
+    ...(fallback || {}),
+    ...(selected || {}),
+    ...(usedPercent !== null ? { usedPercent } : {}),
+    ...(resetsAt !== undefined ? { resetsAt } : {}),
+    ...(windowDurationMins !== null ? { windowDurationMins } : {})
+  };
+}
+
+// RPC is read now but may carry an old app cache; session JSONL has an explicit
+// observation timestamp but can lag behind an active request. Rate-limit usage
+// is monotonic inside one reset window, so equal windows keep the larger used
+// percentage. When reset times differ, the later reset belongs to the newer
+// quota cycle (including the legitimate percentage drop after a reset).
+function mergeCodexRateLimitWindow(rpcWindow, sessionWindow) {
+  if (!rpcWindow) return sessionWindow;
+  if (!sessionWindow) return rpcWindow;
+
+  const rpcResetMs = codexWindowResetMs(rpcWindow);
+  const sessionResetMs = codexWindowResetMs(sessionWindow);
+  if (rpcResetMs !== null && sessionResetMs !== null && Math.abs(rpcResetMs - sessionResetMs) > 1000) {
+    return sessionResetMs > rpcResetMs
+      ? canonicalCodexWindow(sessionWindow, rpcWindow)
+      : canonicalCodexWindow(rpcWindow, sessionWindow);
+  }
+  if (rpcResetMs === null && sessionResetMs !== null) return canonicalCodexWindow(sessionWindow, rpcWindow);
+  if (sessionResetMs === null && rpcResetMs !== null) return canonicalCodexWindow(rpcWindow, sessionWindow);
+
+  const rpcUsed = codexWindowUsedPercent(rpcWindow);
+  const sessionUsed = codexWindowUsedPercent(sessionWindow);
+  if (rpcUsed !== null && sessionUsed !== null) {
+    return sessionUsed > rpcUsed
+      ? canonicalCodexWindow(sessionWindow, rpcWindow)
+      : canonicalCodexWindow(rpcWindow, sessionWindow);
+  }
+  return sessionUsed !== null
+    ? canonicalCodexWindow(sessionWindow, rpcWindow)
+    : canonicalCodexWindow(rpcWindow, sessionWindow);
+}
+
 function preferLatestCodexSessionRateLimits(payload, deps = {}, nowMs = Date.now()) {
   let sessionPayload;
   try { sessionPayload = readLatestCodexSessionRateLimits(deps, nowMs); } catch (_) { return payload; }
   if (!hasCodexRateLimitWindows(sessionPayload?.rateLimits)) return payload;
+  const rpcRateLimits = codexRateLimitSnapshot(payload);
+  const sessionRateLimits = sessionPayload.rateLimits;
+  const mergedRateLimits = {
+    ...rpcRateLimits,
+    ...sessionRateLimits,
+    planType: sessionRateLimits.planType
+      ?? sessionRateLimits.plan_type
+      ?? rpcRateLimits.planType
+      ?? rpcRateLimits.plan_type,
+    primary: mergeCodexRateLimitWindow(rpcRateLimits.primary, sessionRateLimits.primary),
+    secondary: mergeCodexRateLimitWindow(rpcRateLimits.secondary, sessionRateLimits.secondary)
+  };
   return {
     ...payload,
-    rateLimits: sessionPayload.rateLimits,
+    rateLimits: mergedRateLimits,
     rateLimitsByLimitId: {},
     sourceDetail: payload.sourceDetail || 'app'
   };

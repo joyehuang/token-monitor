@@ -7,6 +7,33 @@ const test = require('node:test');
 const { codexCommandCandidates, codexCommandSourceDetail, createLimitsCollector, fetchCodexLimits, mapCodexRateLimitsToProvider } = require('../../src/shared/limitCollector');
 const { hashAccountKey } = require('../../src/shared/codexAuth');
 
+function successfulCodexRpcChild() {
+  const { EventEmitter } = require('node:events');
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.stdin = {
+    write(line) {
+      const message = JSON.parse(String(line));
+      const respond = (result) => {
+        queueMicrotask(() => child.stdout.emit('data', `${JSON.stringify({ id: message.id, result })}\n`));
+      };
+      if (message.method === 'initialize') respond({});
+      if (message.method === 'account/rateLimits/read') {
+        respond({
+          rateLimits: {
+            primary: { usedPercent: 10, resetsAt: '2026-07-10T07:51:20Z', windowDurationMins: 300 },
+            secondary: { usedPercent: 2, resetsAt: '2026-07-17T02:51:20Z', windowDurationMins: 10080 }
+          }
+        });
+      }
+      if (message.method === 'account/read') respond({ account: { planType: 'plus' } });
+    }
+  };
+  child.kill = () => {};
+  return child;
+}
+
 function dirent(name, directory = true) {
   return {
     name,
@@ -101,7 +128,69 @@ test('Codex command source detail separates app-managed binaries from CLI comman
     'cli'
   );
   assert.equal(codexCommandSourceDetail('codex.cmd', 'win32'), 'cli');
+  assert.equal(codexCommandSourceDetail('/Applications/ChatGPT.app/Contents/Resources/codex', 'darwin'), 'app');
   assert.equal(codexCommandSourceDetail('/Applications/Codex.app/Contents/Resources/codex', 'darwin'), 'app');
+});
+
+test('Codex command candidates prefer the ChatGPT embedded binary before legacy app and PATH on macOS', () => {
+  const candidates = codexCommandCandidates({ HOME: '/Users/tester', PATH: '/usr/bin' }, 'darwin');
+
+  assert.deepEqual(candidates.slice(0, 5), [
+    '/Applications/ChatGPT.app/Contents/Resources/codex',
+    '/Applications/Codex.app/Contents/Resources/codex',
+    '/Users/tester/Applications/ChatGPT.app/Contents/Resources/codex',
+    '/Users/tester/Applications/Codex.app/Contents/Resources/codex',
+    'codex'
+  ]);
+});
+
+test('fetchCodexLimits uses the ChatGPT embedded binary when the legacy app is absent', async () => {
+  const chatGptCodex = '/Applications/ChatGPT.app/Contents/Resources/codex';
+  const spawned = [];
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-07-10T03:00:00Z'),
+    platform: 'darwin',
+    env: { PATH: '/usr/bin' },
+    existsSync: (candidate) => candidate === chatGptCodex,
+    readFileSync: () => { throw new Error('no auth.json'); },
+    spawn: (command) => {
+      spawned.push(command);
+      return successfulCodexRpcChild();
+    }
+  });
+
+  assert.deepEqual(spawned, [chatGptCodex]);
+  assert.equal(provider.sourceDetail, 'app');
+  assert.deepEqual(provider.windows.map((window) => [window.kind, window.usedPercent, window.resetsAt]), [
+    ['session', 10, '2026-07-10T07:51:20.000Z'],
+    ['weekly', 2, '2026-07-17T02:51:20.000Z']
+  ]);
+});
+
+test('Codex RPC falls through a broken app binary to the next candidate', async () => {
+  const chatGptCodex = '/Applications/ChatGPT.app/Contents/Resources/codex';
+  const legacyCodex = '/Applications/Codex.app/Contents/Resources/codex';
+  const spawned = [];
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-07-10T03:00:00Z'),
+    platform: 'darwin',
+    env: { PATH: '/usr/bin' },
+    existsSync: (candidate) => candidate === chatGptCodex || candidate === legacyCodex,
+    readFileSync: () => { throw new Error('no auth.json'); },
+    spawn: (command) => {
+      spawned.push(command);
+      if (command === chatGptCodex) {
+        const error = new Error('embedded binary missing');
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return successfulCodexRpcChild();
+    }
+  });
+
+  assert.deepEqual(spawned, [chatGptCodex, legacyCodex]);
+  assert.equal(provider.status, 'ok');
+  assert.equal(provider.sourceDetail, 'app');
 });
 
 test('Codex provider preserves source detail for renderer labels', () => {
@@ -400,7 +489,7 @@ test('fetchCodexLimits fills the live account email from auth.json when the RPC 
   assert.match(live.accountKey, /^sha256:[0-9a-f]{64}$/);
 });
 
-test('fetchCodexLimits prefers the latest live Codex session rate-limit snapshot over stale RPC windows', async () => {
+test('fetchCodexLimits uses a newer quota cycle from a recent Codex session snapshot', async () => {
   const providers = await fetchCodexLimits({}, {
     now: () => Date.parse('2026-06-01T00:05:00Z'),
     env: { PATH: '/usr/bin' },
@@ -430,6 +519,58 @@ test('fetchCodexLimits prefers the latest live Codex session rate-limit snapshot
     ['weekly', 2, 98, 10080]
   ]);
   assert.equal(providers.windows[0].resetsAt, '2026-06-01T05:30:00.000Z');
+});
+
+test('fetchCodexLimits keeps the higher usage when RPC and session snapshots share a reset window', async () => {
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-06-01T00:05:00Z'),
+    env: { PATH: '/usr/bin' },
+    ...noLiveAuth,
+    readCodexRpc: async () => ({
+      account: { planType: 'plus' },
+      rateLimits: {
+        primary: { usedPercent: 32, resetsAt: '2026-06-01T05:00:00Z', windowDurationMins: 300 },
+        secondary: { usedPercent: 12, resetsAt: '2026-06-07T00:00:00Z', windowDurationMins: 10080 }
+      },
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => ({
+      timestampMs: Date.parse('2026-06-01T00:04:00Z'),
+      rateLimits: {
+        primary: { used_percent: 30, resets_at: '2026-06-01T05:00:00Z', window_minutes: 300 },
+        secondary: { used_percent: 10, resets_at: '2026-06-07T00:00:00Z', window_minutes: 10080 }
+      }
+    })
+  });
+
+  assert.deepEqual(provider.windows.map((window) => [window.kind, window.usedPercent]), [
+    ['session', 32],
+    ['weekly', 12]
+  ]);
+});
+
+test('fetchCodexLimits accepts a lower percentage after RPC advances to a new reset cycle', async () => {
+  const provider = await fetchCodexLimits({}, {
+    now: () => Date.parse('2026-06-01T05:05:00Z'),
+    env: { PATH: '/usr/bin' },
+    ...noLiveAuth,
+    readCodexRpc: async () => ({
+      account: { planType: 'plus' },
+      rateLimits: {
+        primary: { usedPercent: 2, resetsAt: '2026-06-01T10:00:00Z', windowDurationMins: 300 }
+      },
+      sourceDetail: 'app'
+    }),
+    readCodexSessionRateLimits: () => ({
+      timestampMs: Date.parse('2026-06-01T05:04:00Z'),
+      rateLimits: {
+        primary: { used_percent: 98, resets_at: '2026-06-01T05:00:00Z', window_minutes: 300 }
+      }
+    })
+  });
+
+  assert.equal(provider.windows[0].usedPercent, 2);
+  assert.equal(provider.windows[0].resetsAt, '2026-06-01T10:00:00.000Z');
 });
 
 test('fetchCodexLimits ignores old Codex session rate-limit snapshots', async () => {
