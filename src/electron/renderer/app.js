@@ -494,8 +494,8 @@ function formatPercent(value) { return Number.isFinite(Number(value)) ? `${Math.
 function formatReset(value) {
   const diffMs = limitProviderPresentationApi.limitResetRemainingMs(value);
   if (diffMs === null) return '';
-  if (diffMs === 0) return 'Reset now';
-  return `Reset ${formatDuration(diffMs)}`;
+  if (diffMs === 0) return t('home.resetNow');
+  return t('home.reset', { value: formatDuration(diffMs) });
 }
 function formatDuration(ms) {
   const totalMinutes = Math.max(0, Math.round(ms / 60000));

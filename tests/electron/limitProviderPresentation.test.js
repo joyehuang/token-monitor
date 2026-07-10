@@ -60,19 +60,30 @@ test('limitResetRemainingMs keeps future resets, briefly marks reset time, and e
   assert.equal(limitResetRemainingMs(null, now), null);
 });
 
-test('isInactiveLimitWindow identifies only an unused Claude session without a reset', () => {
+test('isInactiveLimitWindow identifies only an unused Claude session without an active reset', () => {
+  const now = Date.parse('2026-07-10T03:00:00.000Z');
+
   assert.equal(isInactiveLimitWindow('claude', {
     kind: 'session', usedPercent: 0, remainingPercent: 100, resetsAt: null, resetDescription: ''
-  }), true);
+  }, now), true);
+  assert.equal(isInactiveLimitWindow('claude', {
+    kind: 'session', usedPercent: 0, remainingPercent: 100, resetsAt: '2026-07-10T02:58:59Z'
+  }, now), true);
   assert.equal(isInactiveLimitWindow('claude', {
     kind: 'session', usedPercent: 1, remainingPercent: 99, resetsAt: null, resetDescription: ''
-  }), false);
+  }, now), false);
   assert.equal(isInactiveLimitWindow('claude', {
     kind: 'session', usedPercent: 0, remainingPercent: 100, resetsAt: '2026-07-10T04:00:00Z'
-  }), false);
+  }, now), false);
+  assert.equal(isInactiveLimitWindow('claude', {
+    kind: 'session', usedPercent: 0, remainingPercent: 100, resetsAt: '2026-07-10T02:59:30Z'
+  }, now), false);
+  assert.equal(isInactiveLimitWindow('claude', {
+    kind: 'session', usedPercent: 0, remainingPercent: 100, resetDescription: 'Resets later'
+  }, now), false);
   assert.equal(isInactiveLimitWindow('codex', {
     kind: 'session', usedPercent: 0, remainingPercent: 100, resetsAt: null
-  }), false);
+  }, now), false);
 });
 
 test('Limits and Home reset rendering share expiry and inactive-window presentation', () => {
@@ -83,11 +94,13 @@ test('Limits and Home reset rendering share expiry and inactive-window presentat
   const i18n = readRendererFile('i18n.js');
 
   assert.match(formatReset, /limitResetRemainingMs\(value\)/);
-  assert.match(formatReset, /diffMs === 0/);
+  assert.match(formatReset, /diffMs === 0\) return t\('home\.resetNow'\)/);
+  assert.match(formatReset, /return t\('home\.reset', \{ value: formatDuration\(diffMs\) \}\)/);
   assert.match(limitWindow, /window\?\.resetsAt\s*\? formatReset\(window\.resetsAt\)/);
   assert.doesNotMatch(limitWindow, /formatReset\(window\?\.resetsAt\) \|\| window\?\.resetDescription/);
   assert.match(homeLimits, /window\.resetsAt\s*\? resetAt \|\|/);
   assert.match(homeLimits, /isInactiveLimitWindow\(row\.providerId, window\)/);
+  assert.equal((i18n.match(/'home\.resetNow':/g) || []).length, 5);
   assert.equal((i18n.match(/'home\.noActiveLimitWindow':/g) || []).length, 5);
 });
 

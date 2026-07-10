@@ -123,10 +123,10 @@
     return remainingMs >= -Math.max(0, Number(resetNowGraceMs) || 0) ? 0 : null;
   }
 
-  function isInactiveLimitWindow(providerOrId, window) {
+  function isInactiveLimitWindow(providerOrId, window, nowMs = Date.now()) {
     if (providerId(providerOrId) !== 'claude') return false;
     if (normalizeId(window?.kind) !== 'session') return false;
-    if (window?.resetsAt || window?.resetDescription) return false;
+    if (limitResetRemainingMs(window?.resetsAt, nowMs) !== null || String(window?.resetDescription || '').trim()) return false;
     const remaining = window?.remainingPercent === null || window?.remainingPercent === undefined
       ? null
       : Number(window.remainingPercent);

@@ -47,6 +47,10 @@ test('resolveLocale maps auto to Chinese variants from browser languages', () =>
 test('translate falls back to English and interpolates values', () => {
   assert.equal(translate('zh-TW', 'settings.sync.title'), '多裝置同步');
   assert.equal(translate('zh-CN', 'settings.appUpdate.latestWithStatus', { version: '0.2.1', status: '已是最新' }), 'v0.2.1（已是最新）');
+  assert.equal(translate('zh-TW', 'home.reset', { value: '5m' }), '重設 5m');
+  assert.equal(translate('zh-CN', 'home.resetNow'), '立即重置');
+  assert.equal(translate('ko', 'home.reset', { value: '5m' }), '5m 초기화');
+  assert.equal(translate('ja', 'home.resetNow'), '今すぐリセット');
   assert.equal(translate('zh-TW', 'missing.key'), 'missing.key');
 });
 
