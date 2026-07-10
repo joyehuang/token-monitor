@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 
-const { claudeCommandCandidates, fetchClaudeLimits, mapClaudeCliUsageToProvider, mapClaudeUsageToProvider } = require('../../src/shared/limitCollector');
+const { claudeCommandCandidates, createLimitsCollector, fetchClaudeLimits, mapClaudeCliUsageToProvider, mapClaudeUsageToProvider } = require('../../src/shared/limitCollector');
 
 function fakeSpawnForClaudeUsage(expectedCommand = 'claude.cmd') {
   return (command, args) => {
@@ -57,6 +57,78 @@ test('Claude limits fall back to direct CLI usage on Windows when OAuth usage is
   assert.equal(provider.windows[0].usedPercent, 5);
   assert.equal(provider.windows[1].kind, 'weekly');
   assert.equal(provider.windows[1].usedPercent, 20);
+});
+
+test('Claude source rate limiting does not launch the slow CLI fallback', async () => {
+  let cliCalls = 0;
+  await assert.rejects(fetchClaudeLimits({}, {
+    platform: 'darwin',
+    now: () => Date.parse('2026-06-11T00:00:00Z'),
+    claudeCredentialPath: '/tmp/claude-credentials.json',
+    stat: async () => ({ mtimeMs: 1 }),
+    readFile: async () => JSON.stringify({
+      claudeAiOauth: {
+        accessToken: 'access-token',
+        expiresAt: Date.parse('2026-06-12T00:00:00Z')
+      }
+    }),
+    fetch: async () => ({ ok: false, status: 429 }),
+    runClaudeUsageCli: async () => {
+      cliCalls += 1;
+      return '';
+    }
+  }), (error) => error.status === 'sourceRateLimited');
+
+  assert.equal(cliCalls, 0);
+});
+
+test('createLimitsCollector refreshes Claude at five-minute cadence and keeps the last success through 429', async () => {
+  let now = Date.parse('2026-06-11T00:00:00Z');
+  let calls = 0;
+  const collector = createLimitsCollector({
+    limitProviders: 'claude',
+    limitsRefreshMs: 60_000
+  }, {
+    now: () => now,
+    providerFetchers: {
+      claude: async () => {
+        calls += 1;
+        if (calls > 1) {
+          const error = new Error(calls === 2 ? 'Claude usage rate limited' : 'Claude signed out');
+          error.status = calls === 2 ? 'sourceRateLimited' : 'unauthorized';
+          throw error;
+        }
+        return {
+          provider: 'claude',
+          accountKey: 'sha256:claude-a',
+          status: 'ok',
+          source: 'oauth',
+          updatedAt: new Date(now).toISOString(),
+          windows: [{ kind: 'session', usedPercent: 42, resetsAt: '2026-06-11T05:00:00Z' }]
+        };
+      }
+    }
+  });
+
+  const first = await collector.snapshot(true);
+  now += 60_000;
+  const cached = await collector.snapshot(true);
+  now += 4 * 60_000;
+  const rateLimited = await collector.snapshot(true);
+  now += 60_000;
+  const backedOff = await collector.snapshot(true);
+  now += 4 * 60_000;
+  const unauthorized = await collector.snapshot(true);
+  now += 30_000;
+  const stillUnauthorized = await collector.snapshot(true);
+
+  assert.equal(calls, 3);
+  for (const summary of [first, cached, rateLimited, backedOff]) {
+    assert.equal(summary.providers[0].status, 'ok');
+    assert.equal(summary.providers[0].windows[0].usedPercent, 42);
+  }
+  assert.equal(unauthorized.providers[0].status, 'unauthorized');
+  assert.equal(stillUnauthorized.providers[0].status, 'unauthorized');
 });
 
 test('Claude limits read Windows Credential Manager credentials when credential files are absent', async () => {

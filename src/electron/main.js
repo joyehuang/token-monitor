@@ -1306,7 +1306,10 @@ function startSyncCollector() {
     codexManagedAccounts: codexManagedAccountsForCollector(),
     onUpdate: async (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
-      lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
+      lastCollectedDevice = carryDeviceHistory(
+        lastCollectedDevice,
+        { ...visibleSummary, receivedAt: new Date().toISOString() }
+      );
       if (isExternalAgentActive()) return;
       try {
         await postToHub(visibleSummary);
@@ -1353,7 +1356,10 @@ function startHostCollector() {
     codexManagedAccounts: codexManagedAccountsForCollector(),
     onUpdate: (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
-      lastCollectedDevice = { ...visibleSummary, receivedAt: new Date().toISOString() };
+      lastCollectedDevice = carryDeviceHistory(
+        lastCollectedDevice,
+        { ...visibleSummary, receivedAt: new Date().toISOString() }
+      );
       if (isExternalAgentActive()) return;
       if (!embeddedHub) return;
       try {
@@ -1414,8 +1420,10 @@ function injectLocalDeviceStatus(stats) {
 
 function mergeLocalCollectedDevice(stats) {
   if (!stats || !lastCollectedDevice || !Array.isArray(stats.devices)) return stats;
+  const storedLocalDevice = stats.devices.find((device) => device?.deviceId === lastCollectedDevice.deviceId);
+  const completeLocalDevice = carryDeviceHistory(storedLocalDevice, lastCollectedDevice);
   const devices = stats.devices.filter((device) => device?.deviceId !== lastCollectedDevice.deviceId);
-  devices.push(lastCollectedDevice);
+  devices.push(completeLocalDevice);
   const staleAfterMs = Number(stats.staleAfterMs || 0);
   return withHistoryPreview(aggregateDevices(devices, staleAfterMs), devices);
 }

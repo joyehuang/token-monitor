@@ -43,6 +43,28 @@ test('getDashboardHistory reads local history directly without a blocking collec
   assert.doesNotMatch(fn[1], /localCollectorHandle\.tick/);
 });
 
+test('sync and host snapshots keep history when a watch tick omits it', () => {
+  const main = read('src', 'electron', 'main.js');
+  const syncCollector = main.slice(
+    main.indexOf('function startSyncCollector'),
+    main.indexOf('function startHostCollector')
+  );
+  const hostCollector = main.slice(
+    main.indexOf('function startHostCollector'),
+    main.indexOf('function stopHostStats')
+  );
+  const mergeLocal = main.slice(
+    main.indexOf('function mergeLocalCollectedDevice'),
+    main.indexOf('function syncFallbackStatsWithLocalDevice')
+  );
+
+  assert.match(syncCollector, /lastCollectedDevice\s*=\s*carryDeviceHistory\(/);
+  assert.match(hostCollector, /lastCollectedDevice\s*=\s*carryDeviceHistory\(/);
+  assert.match(mergeLocal, /storedLocalDevice/);
+  assert.match(mergeLocal, /carryDeviceHistory\(storedLocalDevice, lastCollectedDevice\)/);
+  assert.match(mergeLocal, /withHistoryPreview\(aggregateDevices\(devices/);
+});
+
 test('dashboard history is gated by the historyEnabled setting', () => {
   const main = read('src', 'electron', 'main.js');
   assert.match(main, /historyEnabled:\s*true/);

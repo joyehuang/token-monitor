@@ -376,7 +376,7 @@ test('fetchCodexLimits returns one provider per managed Codex account', async ()
   assert.deepEqual(providers.map((provider) => provider.sourceDetail), ['managed', 'managed']);
 });
 
-test('createLimitsCollector retains recent Codex quota windows across one empty refresh', async () => {
+test('createLimitsCollector accepts a successful empty Codex quota response', async () => {
   let now = Date.parse('2026-06-01T00:00:00Z');
   let calls = 0;
   const collector = createLimitsCollector({
@@ -398,17 +398,16 @@ test('createLimitsCollector retains recent Codex quota windows across one empty 
   const second = await collector.snapshot(true);
 
   assert.equal(first.providers[0].windows.length, 1);
-  assert.equal(second.providers[0].windows.length, 1);
-  assert.equal(second.providers[0].windows[0].remainingPercent, 80);
-  assert.equal(second.providers[0].updatedAt, '2026-06-01T00:00:00.000Z');
+  assert.equal(second.providers[0].status, 'ok');
+  assert.equal(second.providers[0].windows.length, 0);
+  assert.equal(second.providers[0].updatedAt, '2026-06-01T00:05:00.000Z');
 });
 
-test('createLimitsCollector confirms a new Codex reset across three refreshes', async () => {
+test('createLimitsCollector does not pin a persisted Codex percentage above the live reading', async () => {
   const previous = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-14T10:25:00.000Z');
-  previous.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
-  const alternate = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:41:00.000Z');
-  alternate.windows[0].resetsAt = '2026-06-14T15:22:06.000Z';
-  let calls = 0;
+  previous.windows[0].resetsAt = '2026-06-14T15:17:06.000Z';
+  const current = codexProvider('sha256:codex-a', 'a@example.com', 81, '2026-06-14T10:41:00.000Z');
+  current.windows[0].resetsAt = '2026-06-14T15:17:06.000Z';
   const collector = createLimitsCollector({
     limitProviders: 'codex',
     limitsRefreshMs: 60_000,
@@ -419,27 +418,14 @@ test('createLimitsCollector confirms a new Codex reset across three refreshes', 
     }
   }, {
     now: () => Date.parse('2026-06-14T10:41:00.000Z'),
-    providerFetchers: {
-      codex: async () => {
-        calls += 1;
-        return calls <= 3 ? alternate : previous;
-      }
-    }
+    providerFetchers: { codex: async () => current }
   });
 
-  const first = await collector.snapshot(true);
-  const second = await collector.snapshot(true);
-  const third = await collector.snapshot(true);
-  const fourth = await collector.snapshot(true);
+  const snapshot = await collector.snapshot(true);
 
-  assert.equal(first.providers[0].windows[0].usedPercent, 84);
-  assert.equal(second.providers[0].windows[0].usedPercent, 84);
-  assert.equal(second.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
-  assert.equal(third.providers[0].windows[0].usedPercent, 10);
-  assert.equal(third.providers[0].windows[0].remainingPercent, 90);
-  assert.equal(third.providers[0].windows[0].resetsAt, '2026-06-14T15:22:06.000Z');
-  assert.equal(fourth.providers[0].windows[0].usedPercent, 10);
-  assert.equal(fourth.providers[0].windows[0].resetsAt, '2026-06-14T15:22:06.000Z');
+  assert.equal(snapshot.providers[0].windows[0].usedPercent, 19);
+  assert.equal(snapshot.providers[0].windows[0].remainingPercent, 81);
+  assert.equal(snapshot.providers[0].windows[0].resetsAt, '2026-06-14T15:17:06.000Z');
 });
 
 test('fetchCodexLimits skips disabled managed Codex accounts', async () => {
@@ -591,7 +577,7 @@ test('fetchCodexLimits keeps live RPC when a recent session snapshot has a diffe
   assert.equal(providers.windows[0].resetsAt, '2026-06-01T05:00:00.000Z');
 });
 
-test('fetchCodexLimits keeps the higher usage when RPC and session snapshots share a reset window', async () => {
+test('fetchCodexLimits keeps live RPC when an accountless session snapshot is higher in the same window', async () => {
   const provider = await fetchCodexLimits({}, {
     now: () => Date.parse('2026-06-01T00:05:00Z'),
     env: { PATH: '/usr/bin' },
@@ -607,8 +593,8 @@ test('fetchCodexLimits keeps the higher usage when RPC and session snapshots sha
     readCodexSessionRateLimits: () => ({
       timestampMs: Date.parse('2026-06-01T00:04:00Z'),
       rateLimits: {
-        primary: { used_percent: 30, resets_at: '2026-06-01T05:00:00Z', window_minutes: 300 },
-        secondary: { used_percent: 10, resets_at: '2026-06-07T00:00:00Z', window_minutes: 10080 }
+        primary: { used_percent: 90, resets_at: '2026-06-01T05:00:00Z', window_minutes: 300 },
+        secondary: { used_percent: 80, resets_at: '2026-06-07T00:00:00Z', window_minutes: 10080 }
       }
     })
   });
@@ -643,7 +629,7 @@ test('fetchCodexLimits accepts a lower percentage after RPC advances to a new re
   assert.equal(provider.windows[0].resetsAt, '2026-06-01T10:00:00.000Z');
 });
 
-test('fetchCodexLimits uses a recent session snapshot after the RPC reset window has expired', async () => {
+test('fetchCodexLimits never substitutes an accountless session snapshot for live RPC', async () => {
   const provider = await fetchCodexLimits({}, {
     now: () => Date.parse('2026-06-01T05:05:00Z'),
     env: { PATH: '/usr/bin' },
@@ -663,8 +649,8 @@ test('fetchCodexLimits uses a recent session snapshot after the RPC reset window
     })
   });
 
-  assert.equal(provider.windows[0].usedPercent, 2);
-  assert.equal(provider.windows[0].resetsAt, '2026-06-01T10:00:00.000Z');
+  assert.equal(provider.windows[0].usedPercent, 98);
+  assert.equal(provider.windows[0].resetsAt, '2026-06-01T05:00:00.000Z');
 });
 
 test('fetchCodexLimits ignores old Codex session rate-limit snapshots', async () => {
@@ -980,7 +966,7 @@ test('fetchCodexLimits augments reset credits expiry from the Codex OAuth endpoi
   });
 });
 
-test('fetchCodexLimits prefers account-scoped OAuth usage over conflicting RPC and session snapshots', async () => {
+test('fetchCodexLimits prefers live RPC over conflicting OAuth and accountless session snapshots', async () => {
   const usageRequests = [];
   const provider = await fetchCodexLimits({}, {
     now: () => Date.parse('2026-07-10T03:55:00Z'),
@@ -1028,12 +1014,12 @@ test('fetchCodexLimits prefers account-scoped OAuth usage over conflicting RPC a
   assert.equal(usageRequests[0].options.headers.authorization, 'Bearer access-token');
   assert.equal(usageRequests[0].options.headers['chatgpt-account-id'], 'acct_live');
   assert.deepEqual(provider.windows.map((window) => [window.kind, window.usedPercent, window.resetsAt]), [
-    ['session', 69, '2026-07-10T07:51:20.000Z'],
-    ['weekly', 11, '2026-07-17T02:51:20.000Z']
+    ['session', 8, '2026-07-10T08:22:06.000Z'],
+    ['weekly', 1, '2026-07-17T03:22:06.000Z']
   ]);
 });
 
-test('fetchCodexLimits keeps the stricter RPC window when OAuth returns the lower alternate', async () => {
+test('fetchCodexLimits keeps live RPC when OAuth returns a lower reading', async () => {
   const provider = await fetchCodexLimits({}, {
     now: () => Date.parse('2026-07-10T03:55:00Z'),
     ...codexOAuthUsageTestDeps({

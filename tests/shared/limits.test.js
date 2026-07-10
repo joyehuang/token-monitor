@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { aggregateLimits, mergeCodexTransientWindows, publicLimits, syncLimits } = require('../../src/shared/limits');
+const { aggregateLimits, mergeTransientLimitProviders, publicLimits, syncLimits } = require('../../src/shared/limits');
 const { collectLimitsOnce } = require('../../src/shared/limitCollector');
 
 function codexProvider(accountKey, accountEmail, remainingPercent, updatedAt) {
@@ -181,286 +181,88 @@ test('aggregateLimits still exposes stale configured Codex quota when no fresh o
   assert.equal(aggregate.providers[0].windows[0].remainingPercent, 41);
 });
 
-test('mergeCodexTransientWindows keeps recent Codex windows when the same account reads empty', () => {
-  const previous = {
-    updatedAt: '2026-06-14T10:00:00.000Z',
-    providers: [codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-06-14T10:00:00.000Z')]
-  };
-  const current = {
-    updatedAt: '2026-06-14T10:05:00.000Z',
-    providers: [
-      {
-        ...codexProvider('sha256:codex-a', 'a@example.com', 0, '2026-06-14T10:05:00.000Z'),
-        windows: []
-      }
-    ]
-  };
+test('mergeTransientLimitProviders accepts a lower successful Codex reading in the same rolling window', () => {
+  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 22, '2026-06-14T10:00:00.000Z');
+  previousProvider.windows[0].resetsAt = '2026-06-14T15:17:06.000Z';
+  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 81, '2026-06-14T10:01:00.000Z');
+  currentProvider.windows[0].resetsAt = '2026-06-14T15:17:06.000Z';
 
-  const merged = mergeCodexTransientWindows(previous, current, Date.parse('2026-06-14T10:05:00.000Z'));
-
-  assert.equal(merged.updatedAt, '2026-06-14T10:05:00.000Z');
-  assert.equal(merged.providers.length, 1);
-  assert.equal(merged.providers[0].windows.length, 1);
-  assert.equal(merged.providers[0].windows[0].remainingPercent, 50);
-  assert.equal(merged.providers[0].updatedAt, '2026-06-14T10:00:00.000Z');
-});
-
-test('mergeCodexTransientWindows stops keeping old Codex windows after retention expires', () => {
-  const previous = {
-    updatedAt: '2026-06-14T10:00:00.000Z',
-    providers: [codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-06-14T10:00:00.000Z')]
-  };
-  const current = {
-    updatedAt: '2026-06-14T10:12:00.000Z',
-    providers: [
-      {
-        ...codexProvider('sha256:codex-a', 'a@example.com', 0, '2026-06-14T10:12:00.000Z'),
-        windows: []
-      }
-    ]
-  };
-
-  const merged = mergeCodexTransientWindows(previous, current, Date.parse('2026-06-14T10:12:00.000Z'), 10 * 60 * 1000);
-
-  assert.equal(merged.providers[0].windows.length, 0);
-  assert.equal(merged.providers[0].updatedAt, '2026-06-14T10:12:00.000Z');
-});
-
-test('mergeCodexTransientWindows does not retain an empty Codex window after its reset', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 0, '2026-06-14T09:59:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-06-14T10:00:00.000Z';
-  const currentProvider = { ...previousProvider, updatedAt: '2026-06-14T10:01:00.000Z', windows: [] };
-
-  const merged = mergeCodexTransientWindows(
-    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
-    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
-    Date.parse('2026-06-14T10:01:00.000Z')
-  );
-
-  assert.deepEqual(merged.providers[0].windows, []);
-  assert.equal(merged.providers[0].updatedAt, '2026-06-14T10:01:00.000Z');
-});
-
-test('mergeCodexTransientWindows rejects a lower alternate Codex window before reset', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-14T10:00:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-06-14T15:51:20.000Z';
-  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:01:00.000Z');
-  currentProvider.windows[0].resetsAt = '2026-06-14T16:22:06.000Z';
-
-  const merged = mergeCodexTransientWindows(
-    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
-    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
-    Date.parse('2026-06-14T10:01:00.000Z')
-  );
-
-  assert.equal(merged.providers[0].windows[0].usedPercent, 84);
-  assert.equal(merged.providers[0].windows[0].remainingPercent, 16);
-  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T15:51:20.000Z');
-  assert.equal(merged.providers[0].updatedAt, '2026-06-14T10:01:00.000Z');
-});
-
-test('mergeCodexTransientWindows can recover when the first Codex window was the lower alternate', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:00:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-06-14T16:22:06.000Z';
-  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-14T10:01:00.000Z');
-  currentProvider.windows[0].resetsAt = '2026-06-14T15:51:20.000Z';
-
-  const merged = mergeCodexTransientWindows(
-    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
-    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
-    Date.parse('2026-06-14T10:01:00.000Z')
-  );
-
-  assert.equal(merged.providers[0].windows[0].usedPercent, 84);
-  assert.equal(merged.providers[0].windows[0].remainingPercent, 16);
-  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T15:51:20.000Z');
-});
-
-test('mergeCodexTransientWindows does not accept an unconfirmed early Codex reset', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 0, '2026-06-14T10:00:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
-  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 96, '2026-06-14T10:01:00.000Z');
-  currentProvider.windows[0].resetsAt = '2026-06-14T15:00:30.000Z';
-
-  const merged = mergeCodexTransientWindows(
-    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
-    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
-    Date.parse('2026-06-14T10:01:00.000Z')
-  );
-
-  assert.equal(merged.providers[0].windows[0].usedPercent, 100);
-  assert.equal(merged.providers[0].windows[0].remainingPercent, 0);
-  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
-});
-
-test('mergeCodexTransientWindows accepts an early reset after three consecutive observations', () => {
-  const transitionState = new Map();
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 0, '2026-06-14T10:00:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
-  let accepted = { updatedAt: previousProvider.updatedAt, providers: [previousProvider] };
-
-  for (let observation = 1; observation <= 3; observation += 1) {
-    const updatedAt = `2026-06-14T10:0${observation}:00.000Z`;
-    const currentProvider = codexProvider(
-      'sha256:codex-a',
-      'a@example.com',
-      97 - observation,
-      updatedAt
-    );
-    currentProvider.windows[0].resetsAt = '2026-06-14T15:00:30.000Z';
-    accepted = mergeCodexTransientWindows(
-      accepted,
-      { updatedAt, providers: [currentProvider] },
-      Date.parse(updatedAt),
-      undefined,
-      transitionState
-    );
-    if (observation < 3) {
-      assert.equal(accepted.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
-    }
-  }
-
-  assert.equal(accepted.providers[0].windows[0].usedPercent, 6);
-  assert.equal(accepted.providers[0].windows[0].remainingPercent, 94);
-  assert.equal(accepted.providers[0].windows[0].resetsAt, '2026-06-14T15:00:30.000Z');
-
-  const oldAgain = { ...previousProvider, updatedAt: '2026-06-14T10:04:00.000Z' };
-  accepted = mergeCodexTransientWindows(
-    accepted,
-    { updatedAt: oldAgain.updatedAt, providers: [oldAgain] },
-    Date.parse(oldAgain.updatedAt),
-    undefined,
-    transitionState
-  );
-  assert.equal(accepted.providers[0].windows[0].usedPercent, 6);
-  assert.equal(accepted.providers[0].windows[0].resetsAt, '2026-06-14T15:00:30.000Z');
-});
-
-test('mergeCodexTransientWindows resets early-reset confirmation when the old window returns', () => {
-  const transitionState = new Map();
-  const oldProvider = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-14T10:00:00.000Z');
-  oldProvider.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
-  const alternate = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:01:00.000Z');
-  alternate.windows[0].resetsAt = '2026-06-14T15:22:06.000Z';
-  const first = mergeCodexTransientWindows(
-    { updatedAt: oldProvider.updatedAt, providers: [oldProvider] },
-    { updatedAt: alternate.updatedAt, providers: [alternate] },
-    Date.parse(alternate.updatedAt),
-    undefined,
-    transitionState
-  );
-  const oldAgain = { ...oldProvider, updatedAt: '2026-06-14T10:02:00.000Z' };
-  const second = mergeCodexTransientWindows(
-    first,
-    { updatedAt: oldAgain.updatedAt, providers: [oldAgain] },
-    Date.parse(oldAgain.updatedAt),
-    undefined,
-    transitionState
-  );
-  const alternateAgain = { ...alternate, updatedAt: '2026-06-14T10:03:00.000Z' };
-  const third = mergeCodexTransientWindows(
-    second,
-    { updatedAt: alternateAgain.updatedAt, providers: [alternateAgain] },
-    Date.parse(alternateAgain.updatedAt),
-    undefined,
-    transitionState
-  );
-
-  assert.equal(third.providers[0].windows[0].usedPercent, 84);
-  assert.equal(third.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
-  assert.equal(transitionState.values().next().value.confirmations, 1);
-});
-
-test('mergeCodexTransientWindows uses an older cached active window to reject a lower alternate', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-14T10:25:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-06-14T14:51:20.000Z';
-  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:31:00.000Z');
-  currentProvider.windows[0].resetsAt = '2026-06-14T15:22:06.000Z';
-
-  const merged = mergeCodexTransientWindows(
-    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
-    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
-    Date.parse('2026-06-14T10:31:00.000Z'),
-    5 * 60 * 1000
-  );
-
-  assert.equal(merged.providers[0].windows[0].usedPercent, 84);
-  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T14:51:20.000Z');
-});
-
-test('mergeCodexTransientWindows ignores implausibly old active cache windows', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 16, '2026-06-01T10:00:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-07-15T14:51:20.000Z';
-  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-06-14T10:01:00.000Z');
-  currentProvider.windows[0].resetsAt = '2026-06-14T15:22:06.000Z';
-
-  const merged = mergeCodexTransientWindows(
+  const merged = mergeTransientLimitProviders(
     { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
     { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
     Date.parse(currentProvider.updatedAt)
   );
 
-  assert.equal(merged.providers[0].windows[0].usedPercent, 10);
-  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T15:22:06.000Z');
+  assert.equal(merged.providers[0].windows[0].usedPercent, 19);
+  assert.equal(merged.providers[0].windows[0].remainingPercent, 81);
+  assert.equal(merged.providers[0].updatedAt, currentProvider.updatedAt);
 });
 
-test('mergeCodexTransientWindows accepts lower Codex usage after the retained reset passes', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 1, '2026-06-14T09:59:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-06-14T10:00:00.000Z';
-  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 96, '2026-06-14T10:01:00.000Z');
-  currentProvider.windows[0].resetsAt = '2026-06-14T15:01:00.000Z';
-
-  const merged = mergeCodexTransientWindows(
-    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
-    { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
-    Date.parse('2026-06-14T10:01:00.000Z')
-  );
-
-  assert.equal(merged.providers[0].windows[0].usedPercent, 4);
-  assert.equal(merged.providers[0].windows[0].remainingPercent, 96);
-  assert.equal(merged.providers[0].windows[0].resetsAt, '2026-06-14T15:01:00.000Z');
-});
-
-test('mergeCodexTransientWindows drops a missing partial window after its reset passes', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 1, '2026-06-14T09:59:00.000Z');
-  previousProvider.windows[0].resetsAt = '2026-06-14T10:00:00.000Z';
-  previousProvider.windows.push({
-    kind: 'weekly',
-    usedPercent: 20,
-    resetsAt: '2026-06-20T10:00:00.000Z',
-    windowMinutes: 10080
-  });
-  const currentProvider = codexProvider('sha256:codex-a', 'a@example.com', 80, '2026-06-14T10:01:00.000Z');
-  currentProvider.windows[0] = {
-    kind: 'weekly',
-    usedPercent: 21,
-    resetsAt: '2026-06-20T10:00:00.000Z',
-    windowMinutes: 10080
+test('mergeTransientLimitProviders keeps a recent successful Claude snapshot through source rate limiting', () => {
+  const previousProvider = {
+    provider: 'claude',
+    accountKey: 'sha256:claude-a',
+    status: 'ok',
+    source: 'oauth',
+    updatedAt: '2026-06-14T10:00:00.000Z',
+    windows: [{ kind: 'session', usedPercent: 42, resetsAt: '2026-06-14T15:00:00.000Z' }]
+  };
+  const currentProvider = {
+    provider: 'claude',
+    status: 'sourceRateLimited',
+    source: 'oauth',
+    updatedAt: '2026-06-14T10:05:00.000Z',
+    windows: []
   };
 
-  const merged = mergeCodexTransientWindows(
+  const merged = mergeTransientLimitProviders(
     { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
     { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
-    Date.parse('2026-06-14T10:01:00.000Z')
+    Date.parse(currentProvider.updatedAt)
   );
 
-  assert.deepEqual(merged.providers[0].windows.map((window) => window.kind), ['weekly']);
-  assert.equal(merged.providers[0].windows[0].usedPercent, 21);
+  assert.equal(merged.providers[0].status, 'ok');
+  assert.equal(merged.providers[0].windows[0].usedPercent, 42);
+  assert.equal(merged.providers[0].updatedAt, previousProvider.updatedAt);
 });
 
-test('mergeCodexTransientWindows does not carry quota windows across Codex accounts', () => {
-  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 1, '2026-06-14T10:00:00.000Z');
-  const currentProvider = codexProvider('sha256:codex-b', 'a@example.com', 96, '2026-06-14T10:01:00.000Z');
+test('mergeTransientLimitProviders expires transient fallback and never masks an authentication change', () => {
+  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-06-14T10:00:00.000Z');
+  const unavailable = { provider: 'codex', status: 'unavailable', source: 'rpc', updatedAt: '2026-06-14T10:20:00.000Z', windows: [] };
+  const unauthorized = { ...unavailable, status: 'unauthorized', updatedAt: '2026-06-14T10:05:00.000Z' };
 
-  const merged = mergeCodexTransientWindows(
+  const expired = mergeTransientLimitProviders(
+    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
+    { updatedAt: unavailable.updatedAt, providers: [unavailable] },
+    Date.parse(unavailable.updatedAt),
+    15 * 60 * 1000
+  );
+  const authChanged = mergeTransientLimitProviders(
+    { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
+    { updatedAt: unauthorized.updatedAt, providers: [unauthorized] },
+    Date.parse(unauthorized.updatedAt)
+  );
+
+  assert.equal(expired.providers[0].status, 'unavailable');
+  assert.equal(authChanged.providers[0].status, 'unauthorized');
+});
+
+test('mergeTransientLimitProviders never carries a transient snapshot across explicit accounts', () => {
+  const previousProvider = codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-06-14T10:00:00.000Z');
+  const currentProvider = {
+    ...codexProvider('sha256:codex-b', 'b@example.com', 0, '2026-06-14T10:05:00.000Z'),
+    status: 'unavailable',
+    windows: []
+  };
+
+  const merged = mergeTransientLimitProviders(
     { updatedAt: previousProvider.updatedAt, providers: [previousProvider] },
     { updatedAt: currentProvider.updatedAt, providers: [currentProvider] },
-    Date.parse('2026-06-14T10:01:00.000Z')
+    Date.parse(currentProvider.updatedAt)
   );
 
   assert.equal(merged.providers[0].accountKey, 'sha256:codex-b');
-  assert.equal(merged.providers[0].windows[0].usedPercent, 4);
-  assert.equal(merged.providers[0].windows[0].remainingPercent, 96);
+  assert.equal(merged.providers[0].status, 'unavailable');
 });
 
 test('syncLimits carries Codex account key, email and plan label to the authenticated hub', () => {

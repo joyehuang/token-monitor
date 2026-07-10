@@ -8,10 +8,9 @@ const path = require('node:path');
 const { appVersion } = require('./appVersion');
 const {
   DEFAULT_LIMITS_REFRESH_MS,
-  mergeCodexTransientWindows,
+  mergeTransientLimitProviders,
   normalizeLimitProvider,
-  normalizeLimitsSummary,
-  seedCodexTransitionState
+  normalizeLimitsSummary
 } = require('./limits');
 const cursorAuth = require('./cursorAuth');
 const cursorProbe = require('./cursorProbe');
@@ -44,14 +43,13 @@ const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const CLAUDE_OAUTH_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
 const CLAUDE_OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 const CLAUDE_REFRESH_LEEWAY_MS = 5 * 60 * 1000;
+const CLAUDE_LIMITS_REFRESH_MS = 5 * 60 * 1000;
 const CLAUDE_SESSION_WINDOW_MINUTES = 5 * 60;
 const CLAUDE_WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
 const CODEX_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api';
 const CODEX_USAGE_PATH = '/wham/usage';
 const CODEX_RESET_CREDITS_PATH = '/wham/rate-limit-reset-credits';
 const CODEX_EMPTY_QUOTA_RETRY_DELAY_MS = 300;
-const CODEX_SESSION_RATE_LIMIT_MAX_AGE_MS = 30 * 60 * 1000;
-const CODEX_SESSION_RATE_LIMIT_MAX_FILES = 80;
 const TOKEN_MONITOR_USER_AGENT = `token-monitor/${appVersion()} (+https://github.com/Javis603/token-monitor)`;
 
 function nowIso(nowMs) {
@@ -99,7 +97,7 @@ function errorWithStatus(status, message) {
 }
 
 function shouldTryClaudeCliFallback(error) {
-  return ['sourceRateLimited', 'unavailable', 'error'].includes(error?.status);
+  return ['unavailable', 'error'].includes(error?.status);
 }
 
 async function readJsonFile(filePath, deps) {
@@ -1347,27 +1345,19 @@ async function readCodexUsage(deps = {}) {
   return fetchCodexUsage(deps);
 }
 
-function stricterCodexRateLimitWindow(first, second, nowMs = Date.now()) {
-  if (!first) return second;
-  if (!second) return first;
-  const firstReset = codexWindowResetMs(first);
-  const secondReset = codexWindowResetMs(second);
-  if (firstReset !== null && firstReset <= nowMs && secondReset !== null && secondReset > nowMs) return second;
-  if (secondReset !== null && secondReset <= nowMs && firstReset !== null && firstReset > nowMs) return first;
-
-  const firstUsed = codexWindowUsedPercent(first);
-  const secondUsed = codexWindowUsedPercent(second);
-  if (firstUsed !== null && secondUsed !== null && firstUsed !== secondUsed) {
-    return firstUsed > secondUsed
-      ? canonicalCodexWindow(first, second)
-      : canonicalCodexWindow(second, first);
+function preferRpcCodexRateLimitWindow(rpcWindow, oauthWindow, nowMs = Date.now()) {
+  if (!rpcWindow) return oauthWindow;
+  if (!oauthWindow) return rpcWindow;
+  const rpcReset = codexWindowResetMs(rpcWindow);
+  const oauthReset = codexWindowResetMs(oauthWindow);
+  if (rpcReset !== null && rpcReset <= nowMs && oauthReset !== null && oauthReset > nowMs) {
+    return canonicalCodexWindow(oauthWindow, rpcWindow);
   }
-  if (firstReset !== null && secondReset !== null && firstReset !== secondReset) {
-    return firstReset < secondReset
-      ? canonicalCodexWindow(first, second)
-      : canonicalCodexWindow(second, first);
-  }
-  return canonicalCodexWindow(second, first);
+  // account/rateLimits/read is the same live account source used by Codex. The
+  // account-scoped HTTP sample fills missing fields and is a fallback for an
+  // expired / absent RPC window; it must never replace a live RPC percentage
+  // merely because the other sample is higher.
+  return canonicalCodexWindow(rpcWindow, oauthWindow);
 }
 
 async function withCodexOAuthUsage(payload, deps = {}, nowMs = Date.now()) {
@@ -1379,8 +1369,8 @@ async function withCodexOAuthUsage(payload, deps = {}, nowMs = Date.now()) {
       ...rpcRateLimits,
       ...oauthRateLimits,
       planType: oauthRateLimits.planType ?? oauthRateLimits.plan_type ?? rpcRateLimits.planType ?? rpcRateLimits.plan_type,
-      primary: stricterCodexRateLimitWindow(rpcRateLimits.primary, oauthRateLimits.primary, nowMs),
-      secondary: stricterCodexRateLimitWindow(rpcRateLimits.secondary, oauthRateLimits.secondary, nowMs)
+      primary: preferRpcCodexRateLimitWindow(rpcRateLimits.primary, oauthRateLimits.primary, nowMs),
+      secondary: preferRpcCodexRateLimitWindow(rpcRateLimits.secondary, oauthRateLimits.secondary, nowMs)
     };
     return {
       ...payload,
@@ -2116,116 +2106,6 @@ function readLiveCodexIdentity(deps = {}) {
   }
 }
 
-function codexHomeDir(deps = {}) {
-  const env = deps.env || process.env;
-  const pathApi = pathApiForPlatform(deps.platform || process.platform);
-  return env.CODEX_HOME || pathApi.join(os.homedir(), '.codex');
-}
-
-function codexSessionRoots(deps = {}) {
-  const pathApi = pathApiForPlatform(deps.platform || process.platform);
-  const home = codexHomeDir(deps);
-  return [
-    deps.codexSessionsPath || pathApi.join(home, 'sessions'),
-    deps.codexArchivedSessionsPath || pathApi.join(home, 'archived_sessions')
-  ];
-}
-
-function statMtimeMs(stats) {
-  const value = Number(stats?.mtimeMs);
-  if (Number.isFinite(value)) return value;
-  const parsed = Date.parse(stats?.mtime || '');
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function collectCodexSessionFiles(deps = {}) {
-  const readdir = deps.readdirSync || fs.readdirSync;
-  const stat = deps.statSync || fs.statSync;
-  const files = [];
-  const stack = codexSessionRoots(deps).filter(Boolean);
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    let entries;
-    try { entries = readdir(dir, { withFileTypes: true }); } catch (_) { continue; }
-    for (const entry of entries || []) {
-      const name = typeof entry === 'string' ? entry : entry?.name;
-      if (!name) continue;
-      const fullPath = pathApiForPlatform(deps.platform || process.platform).join(dir, name);
-      const isDirectory = typeof entry?.isDirectory === 'function' ? entry.isDirectory() : false;
-      const isFile = typeof entry?.isFile === 'function' ? entry.isFile() : !isDirectory;
-      if (isDirectory) {
-        stack.push(fullPath);
-        continue;
-      }
-      if (!isFile || !name.endsWith('.jsonl')) continue;
-      let mtimeMs = 0;
-      try { mtimeMs = statMtimeMs(stat(fullPath)); } catch (_) {}
-      files.push({ path: fullPath, mtimeMs });
-    }
-  }
-  return files
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(0, Number(deps.codexSessionRateLimitMaxFiles || CODEX_SESSION_RATE_LIMIT_MAX_FILES));
-}
-
-function codexSessionRateLimitPayloadFromLine(line) {
-  if (!String(line || '').includes('rate_limits')) return null;
-  let parsed;
-  try { parsed = JSON.parse(line); } catch (_) { return null; }
-  const rateLimits = parsed?.payload?.rate_limits || parsed?.rate_limits;
-  if (!hasCodexRateLimitWindows(rateLimits)) return null;
-  const timestampMs = Date.parse(parsed.timestamp || parsed?.payload?.timestamp || '');
-  if (!Number.isFinite(timestampMs)) return null;
-  return {
-    timestampMs,
-    timestamp: new Date(timestampMs).toISOString(),
-    rateLimits: {
-      ...rateLimits,
-      ...(rateLimits.plan_type && !rateLimits.planType ? { planType: rateLimits.plan_type } : {})
-    }
-  };
-}
-
-function latestCodexSessionRateLimitsFromFile(filePath, deps = {}) {
-  const read = deps.readFileSync || fs.readFileSync;
-  let text;
-  try { text = read(filePath, 'utf8'); } catch (_) { return null; }
-  const lines = String(text).split(/\r?\n/);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const payload = codexSessionRateLimitPayloadFromLine(lines[index]);
-    if (payload) return { ...payload, filePath };
-  }
-  return null;
-}
-
-function codexSessionRateLimitIsFresh(payload, deps = {}, nowMs = Date.now()) {
-  if (!payload) return false;
-  const maxAgeMs = Number(deps.codexSessionRateLimitMaxAgeMs ?? CODEX_SESSION_RATE_LIMIT_MAX_AGE_MS);
-  const timestampMs = Number(payload.timestampMs ?? Date.parse(payload.timestamp || ''));
-  if (!Number.isFinite(timestampMs)) return false;
-  const ageMs = nowMs - timestampMs;
-  if (Number.isFinite(maxAgeMs) && maxAgeMs >= 0 && ageMs > maxAgeMs) return false;
-  return ageMs >= -5 * 60 * 1000;
-}
-
-function readLatestCodexSessionRateLimits(deps = {}, nowMs = Date.now()) {
-  if (deps.readCodexSessionRateLimits) {
-    const payload = deps.readCodexSessionRateLimits(deps, nowMs);
-    return codexSessionRateLimitIsFresh(payload, deps, nowMs) ? payload : null;
-  }
-  if (deps.codexSessionRateLimits === false) return null;
-  if ((deps.readFileSync || deps.readdirSync || deps.statSync) && !(deps.readFileSync && deps.readdirSync && deps.statSync)) {
-    return null;
-  }
-  for (const file of collectCodexSessionFiles(deps)) {
-    const payload = latestCodexSessionRateLimitsFromFile(file.path, deps);
-    if (!payload) continue;
-    if (!codexSessionRateLimitIsFresh(payload, deps, nowMs)) continue;
-    return payload;
-  }
-  return null;
-}
-
 function codexWindowResetMs(window) {
   return normalizeExpiresAt(window?.resetsAt ?? window?.resets_at);
 }
@@ -2260,71 +2140,12 @@ function canonicalCodexWindow(selected, fallback) {
   };
 }
 
-// RPC belongs to the account currently active in Codex. Session JSONL has an
-// explicit observation timestamp but can come from another still-running Codex
-// process/account, and those events do not carry a usable account identity.
-// Therefore session data may only raise monotonic usage inside the SAME reset
-// window. A different reset anchor is accepted only when the RPC window has
-// actually expired and the session window is demonstrably the next live cycle.
-function mergeCodexRateLimitWindow(rpcWindow, sessionWindow, nowMs = Date.now()) {
-  if (!rpcWindow) return sessionWindow;
-  if (!sessionWindow) return rpcWindow;
-
-  const rpcResetMs = codexWindowResetMs(rpcWindow);
-  const sessionResetMs = codexWindowResetMs(sessionWindow);
-  if (rpcResetMs !== null && sessionResetMs !== null && Math.abs(rpcResetMs - sessionResetMs) > 2000) {
-    if (rpcResetMs <= nowMs && sessionResetMs > nowMs) {
-      return canonicalCodexWindow(sessionWindow, rpcWindow);
-    }
-    return canonicalCodexWindow(rpcWindow, sessionWindow);
-  }
-  if (rpcResetMs === null || sessionResetMs === null) return canonicalCodexWindow(rpcWindow, sessionWindow);
-
-  const rpcUsed = codexWindowUsedPercent(rpcWindow);
-  const sessionUsed = codexWindowUsedPercent(sessionWindow);
-  if (rpcUsed !== null && sessionUsed !== null) {
-    return sessionUsed > rpcUsed
-      ? canonicalCodexWindow(sessionWindow, rpcWindow)
-      : canonicalCodexWindow(rpcWindow, sessionWindow);
-  }
-  return sessionUsed !== null
-    ? canonicalCodexWindow(sessionWindow, rpcWindow)
-    : canonicalCodexWindow(rpcWindow, sessionWindow);
-}
-
-function preferLatestCodexSessionRateLimits(payload, deps = {}, nowMs = Date.now()) {
-  let sessionPayload;
-  try { sessionPayload = readLatestCodexSessionRateLimits(deps, nowMs); } catch (_) { return payload; }
-  if (!hasCodexRateLimitWindows(sessionPayload?.rateLimits)) return payload;
-  const rpcRateLimits = codexRateLimitSnapshot(payload);
-  const sessionRateLimits = sessionPayload.rateLimits;
-  const rpcHasWindows = hasCodexRateLimitWindows(rpcRateLimits);
-  const selectedPlanType = rpcHasWindows
-    ? rpcRateLimits.planType ?? rpcRateLimits.plan_type
-    : sessionRateLimits.planType ?? sessionRateLimits.plan_type;
-  const mergedRateLimits = {
-    ...sessionRateLimits,
-    ...rpcRateLimits,
-    planType: selectedPlanType,
-    plan_type: selectedPlanType,
-    primary: mergeCodexRateLimitWindow(rpcRateLimits.primary, sessionRateLimits.primary, nowMs),
-    secondary: mergeCodexRateLimitWindow(rpcRateLimits.secondary, sessionRateLimits.secondary, nowMs)
-  };
-  return {
-    ...payload,
-    rateLimits: mergedRateLimits,
-    rateLimitsByLimitId: {},
-    sourceDetail: payload.sourceDetail || 'app'
-  };
-}
-
 async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now()) {
   const reader = deps.readCodexRpc || readCodexRpc;
   let payload = await reader(deps);
-  payload = preferLatestCodexSessionRateLimits(payload, deps, nowMs);
-  // Take an independent account-scoped sample with an explicit ChatGPT account
-  // id, then keep the stricter active window across it and the RPC result. Both
-  // upstream paths can intermittently return an alternate lower quota bucket.
+  // Session JSONL can belong to another concurrently running Codex account and
+  // carries no stable account identity. Never let it override the authenticated
+  // live RPC. The explicit account-scoped HTTP sample is fallback/enrichment.
   payload = await withCodexOAuthUsage(payload, deps, nowMs);
   payload = await withCodexOAuthResetCredits(payload, deps);
   const authIdentity = readLiveCodexIdentity(deps);
@@ -2719,15 +2540,58 @@ function createLimitsCollector(options = {}, deps = {}) {
   let cached = options.initialLimits ? normalizeLimitsSummary(options.initialLimits) : null;
   let cachedAt = 0;
   let inFlight = null;
-  const codexTransitionState = seedCodexTransitionState(cached);
+  let lastClaudeProvider = cached?.providers.find((provider) => provider.provider === 'claude' && provider.status === 'ok') || null;
+  let nextClaudeFetchAt = lastClaudeProvider?.updatedAt
+    ? Date.parse(lastClaudeProvider.updatedAt) + CLAUDE_LIMITS_REFRESH_MS
+    : 0;
+  let lastClaudeError = null;
+  const injectedClaudeFetcher = deps.providerFetchers?.claude;
+
+  async function fetchClaudeWithCadence(providerOptions) {
+    const current = (deps.now || Date.now)();
+    if (current < nextClaudeFetchAt) {
+      if (lastClaudeProvider) return lastClaudeProvider;
+      if (lastClaudeError) throw lastClaudeError;
+    }
+    try {
+      const provider = await (injectedClaudeFetcher
+        ? injectedClaudeFetcher(providerOptions)
+        : fetchClaudeLimits(providerOptions, deps));
+      const transient = ['sourceRateLimited', 'unavailable', 'error'].includes(provider?.status);
+      nextClaudeFetchAt = current + (provider?.status === 'ok' || provider?.status === 'sourceRateLimited'
+        ? CLAUDE_LIMITS_REFRESH_MS
+        : refreshMs);
+      lastClaudeError = null;
+      if (provider?.status === 'ok') lastClaudeProvider = provider;
+      else if (!transient) lastClaudeProvider = null;
+      return provider;
+    } catch (error) {
+      lastClaudeError = error;
+      if (!['sourceRateLimited', 'unavailable', 'error'].includes(error?.status)) lastClaudeProvider = null;
+      nextClaudeFetchAt = current + (error?.status === 'sourceRateLimited'
+        ? CLAUDE_LIMITS_REFRESH_MS
+        : refreshMs);
+      throw error;
+    }
+  }
+
+  const collectionDeps = {
+    ...deps,
+    providerFetchers: {
+      ...(deps.providerFetchers || {}),
+      claude: fetchClaudeWithCadence
+    }
+  };
 
   async function snapshot(force = false) {
     const current = (deps.now || Date.now)();
     if (!force && cached && current - cachedAt < refreshMs) return cached;
     if (inFlight) return inFlight;
-    inFlight = collectLimitsOnce({ ...options, limitsRefreshMs: refreshMs }, deps)
+    inFlight = collectLimitsOnce({ ...options, limitsRefreshMs: refreshMs }, collectionDeps)
       .then((summary) => {
-        cached = mergeCodexTransientWindows(cached, summary, current, undefined, codexTransitionState);
+        cached = mergeTransientLimitProviders(cached, summary, current);
+        const claude = cached.providers.find((provider) => provider.provider === 'claude' && provider.status === 'ok');
+        if (claude) lastClaudeProvider = claude;
         cachedAt = current;
         return cached;
       })
