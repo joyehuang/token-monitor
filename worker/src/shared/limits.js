@@ -410,6 +410,14 @@ function compareQuotaPressure(first, second) {
 }
 
 function stableProviderTieBreak(current, candidate) {
+  const sameCodexAccount = current.provider === 'codex'
+    && candidate.provider === 'codex'
+    && current.accountKey
+    && current.accountKey === candidate.accountKey;
+  if (sameCodexAccount) {
+    const deviceDiff = String(candidate.sourceDeviceId || '').localeCompare(String(current.sourceDeviceId || ''));
+    if (deviceDiff !== 0) return deviceDiff < 0 ? candidate : current;
+  }
   const timestampDiff = timestampMs(candidate.updatedAt) - timestampMs(current.updatedAt);
   if (timestampDiff !== 0) return timestampDiff > 0 ? candidate : current;
   const deviceDiff = String(candidate.sourceDeviceId || '').localeCompare(String(current.sourceDeviceId || ''));

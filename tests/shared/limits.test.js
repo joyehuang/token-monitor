@@ -165,6 +165,26 @@ test('aggregateLimits Codex selection is stable when device report order changes
   assert.deepEqual(reversed.providers, forward.providers);
 });
 
+test('aggregateLimits keeps equal-pressure Codex fields stable as devices refresh', () => {
+  const desktop = codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-07-11T12:20:00.000Z');
+  const windows = codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-07-11T12:25:00.000Z');
+  desktop.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  windows.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  desktop.resetCredits = { availableCount: 2 };
+  windows.resetCredits = { availableCount: 1 };
+  const devices = [
+    { deviceId: 'windows', limits: { providers: [windows] } },
+    { deviceId: 'desktop', limits: { providers: [desktop] } }
+  ];
+
+  const forward = aggregateLimits(devices, 0, Date.parse('2026-07-11T13:00:00.000Z'));
+  const reversed = aggregateLimits([...devices].reverse(), 0, Date.parse('2026-07-11T13:00:00.000Z'));
+
+  assert.equal(forward.providers[0].sourceDeviceId, 'desktop');
+  assert.equal(forward.providers[0].resetCredits.availableCount, 2);
+  assert.deepEqual(reversed.providers, forward.providers);
+});
+
 test('aggregateLimits accepts a newer Codex quota generation before the tighter snapshot expires', () => {
   const oldTight = codexProvider('sha256:codex-a', 'a@example.com', 12, '2026-07-11T12:20:00.000Z');
   oldTight.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
