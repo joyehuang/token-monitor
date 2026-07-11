@@ -1,6 +1,7 @@
 import { publicLimits } from './shared/limits.js';
 import { aggregateDevices, mergeDeviceRecord, aggregateHistory } from './shared/usage.js';
 import { historyPreview } from './shared/history.js';
+import { parseBadgeOptions, renderErrorBadge, renderUsageBadge } from './badge.js';
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -17,6 +18,19 @@ function jsonResponse(status, payload, extra = {}) {
 
 function textResponse(status, body, contentType = 'text/plain; charset=utf-8') {
   return new Response(body, { status, headers: { 'content-type': contentType, ...CORS_HEADERS } });
+}
+
+function svgResponse(status, body, extra = {}) {
+  return new Response(body, {
+    status,
+    headers: {
+      'content-type': 'image/svg+xml; charset=utf-8',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      'x-content-type-options': 'nosniff',
+      ...CORS_HEADERS,
+      ...extra
+    }
+  });
 }
 
 function requestSecret(request) {
@@ -142,6 +156,17 @@ export class HubDO {
         limits: publicLimits(limits),
         ...rest
       }, { 'cache-control': 'public, max-age=15, s-maxage=15' });
+    }
+
+    if ((request.method === 'GET' || request.method === 'HEAD') && url.pathname === '/api/public/badge.svg') {
+      if (!this.publicStatsEnabled) return jsonResponse(404, { error: 'not_found' });
+      const options = parseBadgeOptions(url);
+      if (options.error) {
+        return svgResponse(400, request.method === 'HEAD' ? '' : renderErrorBadge(options.error), { 'cache-control': 'no-store' });
+      }
+      const stats = await this.getStats();
+      const body = request.method === 'HEAD' ? '' : renderUsageBadge(stats, options);
+      return svgResponse(200, body, { 'cache-control': 'public, max-age=15, s-maxage=15' });
     }
 
     // A Worker is an internet-facing URL with no trusted-LAN fallback, so it must

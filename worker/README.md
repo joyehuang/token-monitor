@@ -91,7 +91,25 @@ To enable the public endpoint:
 npx wrangler secret put PUBLIC_STATS_ENABLED   # enter 1
 ```
 
-Leave it unset to keep `/api/public/stats` disabled.
+Leave it unset to keep both `/api/public/stats` and `/api/public/badge.svg`
+disabled.
+
+### GitHub README badge
+
+The public SVG badge exposes only an aggregate token total and the latest
+update time. Pick `period=today|week|month|allTime` and
+`theme=dark|light`:
+
+```html
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://token-monitor-hub.<your-subdomain>.workers.dev/api/public/badge.svg?period=today&theme=dark">
+  <source media="(prefers-color-scheme: light)" srcset="https://token-monitor-hub.<your-subdomain>.workers.dev/api/public/badge.svg?period=today&theme=light">
+  <img alt="Token Monitor usage" src="https://token-monitor-hub.<your-subdomain>.workers.dev/api/public/badge.svg?period=today">
+</picture>
+```
+
+GitHub's image proxy may cache the SVG beyond the Worker's 15-second cache,
+so README updates are near-real-time rather than instantaneous.
 
 ### Widgy
 
@@ -245,6 +263,7 @@ endpoint includes account hashes for de-duplication. When enabled,
 |--------|----------------------------|--------|--------------------------------------------|
 | GET    | `/api/health`              | none   | Liveness probe + device count              |
 | GET    | `/api/public/stats`        | none   | Public aggregate stats without devices/account ids when `PUBLIC_STATS_ENABLED=1` |
+| GET    | `/api/public/badge.svg`    | none   | Public aggregate token SVG when `PUBLIC_STATS_ENABLED=1` |
 | GET    | `/api/stats`               | secret | Aggregated stats (today / week / month / allTime) |
 | GET    | `/api/stats/stream`        | secret | SSE stream, push on every ingest           |
 | GET    | `/api/devices`             | secret | Raw per-device records                     |
@@ -264,7 +283,8 @@ The secret is accepted three ways (any one works):
 
 The secret is required. When `TOKEN_MONITOR_SECRET` is unset, every data route
 returns `503 secret_required` — only `/api/health` and the opt-in
-`/api/public/stats` respond. Set it before (or during) deploy.
+`/api/public/stats` and `/api/public/badge.svg` respond. Set it before (or
+during) deploy.
 
 ## Storage and cost
 
