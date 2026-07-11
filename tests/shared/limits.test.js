@@ -29,6 +29,27 @@ function codexProvider(accountKey, accountEmail, remainingPercent, updatedAt) {
   };
 }
 
+function mimoProvider(accountKey, accountName, usedPercent, updatedAt) {
+  return {
+    provider: 'mimo',
+    accountKey,
+    accountName,
+    accountLabel: 'Token Plan',
+    status: 'ok',
+    source: 'web',
+    updatedAt,
+    windows: [
+      {
+        kind: 'billing',
+        usedPercent,
+        remainingPercent: 100 - usedPercent,
+        resetsAt: '',
+        windowMinutes: null
+      }
+    ]
+  };
+}
+
 test('aggregateLimits preserves distinct Codex accounts by hashed account key', () => {
   const aggregate = aggregateLimits([
     {
@@ -53,6 +74,41 @@ test('aggregateLimits preserves distinct Codex accounts by hashed account key', 
     new Set(codexProviders.map((provider) => provider.accountEmail)),
     new Set(['a@example.com', 'b@example.com'])
   );
+});
+
+test('aggregateLimits preserves distinct MiMo accounts by hashed account key', () => {
+  const aggregate = aggregateLimits([
+    {
+      deviceId: 'macbook',
+      limits: {
+        updatedAt: '2026-07-08T10:00:00.000Z',
+        providers: [
+          mimoProvider('sha256:mimo-a', 'alpha', 10, '2026-07-08T10:00:00.000Z'),
+          mimoProvider('sha256:mimo-b', 'beta', 30, '2026-07-08T10:01:00.000Z')
+        ]
+      }
+    }
+  ], 0, Date.parse('2026-07-08T10:02:00.000Z'));
+
+  const mimoProviders = aggregate.providers.filter((provider) => provider.provider === 'mimo');
+  assert.equal(mimoProviders.length, 2);
+  assert.deepEqual(
+    new Set(mimoProviders.map((provider) => provider.accountKey)),
+    new Set(['sha256:mimo-a', 'sha256:mimo-b'])
+  );
+});
+
+test('publicLimits preserves MiMo plan status while removing account identity', () => {
+  const payload = publicLimits({
+    providers: [{
+      ...mimoProvider('sha256:mimo-a', 'alpha', 0, '2026-07-10T00:00:00.000Z'),
+      balance: { amount: 7.51, currency: 'CNY', planStatus: 'expired' }
+    }]
+  });
+
+  assert.equal(payload.providers[0].balance.planStatus, 'expired');
+  assert.equal(Object.hasOwn(payload.providers[0], 'accountKey'), false);
+  assert.equal(Object.hasOwn(payload.providers[0], 'accountName'), false);
 });
 
 test('aggregateLimits merges the same Codex account across devices and keeps distinct ones', () => {

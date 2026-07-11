@@ -4,7 +4,7 @@
 'use strict';
 
 const DEFAULT_LIMITS_REFRESH_MS = 5 * 60 * 1000;
-const VALID_PROVIDERS = new Set(['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi']);
+const VALID_PROVIDERS = new Set(['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'mimo', 'grok', 'copilot', 'kiro', 'zai', 'volcengine', 'qoder', 'zaiteam', 'kimi']);
 const VALID_STATUSES = new Set(['ok', 'disabled', 'notConfigured', 'unauthorized', 'rateLimited', 'sourceRateLimited', 'unavailable', 'error']);
 const VALID_SOURCES = new Set(['oauth', 'cli', 'web', 'rpc', 'local', 'api']);
 const VALID_SOURCE_DETAILS = new Set(['app', 'cli', 'managed', 'unknown']);
@@ -91,6 +91,15 @@ function normalizeIsoTimestamp(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function normalizeDateText(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const iso = normalizeIsoTimestamp(raw);
+  if (iso) return iso.slice(0, 10);
+  return raw.length <= 32 ? raw : '';
+}
+
 function numberOrNull(value) {
   const number = asNumber(value);
   return number === null ? null : number;
@@ -128,15 +137,66 @@ function normalizeLimitWindow(input) {
 
 function normalizeProviderBalance(input) {
   if (!input || typeof input !== 'object') return null;
-  const amount = numberOrNull(input.amount);
-  const currency = String(input.currency || '').trim().toUpperCase().slice(0, 8) || null;
-  if (amount === null && !currency) return null;
+  const amount = numberOrNull(input.amount ?? input.balance ?? input.accountBalance ?? input.account_balance);
+  const currency = String(
+    input.currency
+    || input.balanceCurrency
+    || input.balance_currency
+    || input.accountCurrency
+    || input.account_currency
+    || ''
+  ).trim().toUpperCase().slice(0, 8) || null;
+  const todaySpend = numberOrNull(input.todaySpend ?? input.today_spend);
+  const monthSpend = numberOrNull(input.monthSpend ?? input.month_spend);
+  const monthSinceTracking = input.monthSinceTracking ?? input.month_since_tracking;
+  const giftBalance = numberOrNull(input.giftBalance ?? input.gift_balance);
+  const cashBalance = numberOrNull(input.cashBalance ?? input.cash_balance);
+  const planUsed = numberOrNull(input.planUsed ?? input.plan_used);
+  const planLimit = numberOrNull(input.planLimit ?? input.plan_limit);
+  const planPercent = numberOrNull(input.planPercent ?? input.plan_percent);
+  const planStatus = ['active', 'expired'].includes(String(input.planStatus ?? input.plan_status ?? '').trim().toLowerCase())
+    ? String(input.planStatus ?? input.plan_status).trim().toLowerCase()
+    : null;
+  const todayTokenTotal = numberOrNull(input.todayTokenTotal ?? input.today_token_total);
+  const todayUsageDate = normalizeDateText(input.todayUsageDate ?? input.today_usage_date);
+  const latestModelUsageDate = normalizeDateText(input.latestModelUsageDate ?? input.latest_model_usage_date);
+  const todayUsageBasis = String(input.todayUsageBasis ?? input.today_usage_basis ?? '').trim().slice(0, 64);
+  const snapshotDate = normalizeDateText(input.snapshotDate ?? input.snapshot_date ?? input.date);
+  if (
+    amount === null
+    && !currency
+    && todaySpend === null
+    && monthSpend === null
+    && monthSinceTracking === undefined
+    && giftBalance === null
+    && cashBalance === null
+    && planUsed === null
+    && planLimit === null
+    && planPercent === null
+    && planStatus === null
+    && todayTokenTotal === null
+    && !todayUsageDate
+    && !latestModelUsageDate
+    && !todayUsageBasis
+    && !snapshotDate
+  ) return null;
   return {
     amount,
     currency,
-    todaySpend: numberOrNull(input.todaySpend),
-    monthSpend: numberOrNull(input.monthSpend),
-    monthSinceTracking: Boolean(input.monthSinceTracking)
+    todaySpend,
+    monthSpend,
+    monthSinceTracking: Boolean(monthSinceTracking),
+    giftBalance,
+    cashBalance,
+    planUsed,
+    planLimit,
+    planPercent,
+    planStatus,
+    todayTokenTotal,
+    todayUsageDate,
+    latestModelUsageDate,
+    todayUsageBasis,
+    snapshotDate
   };
 }
 
@@ -271,7 +331,7 @@ function isConfiguredProvider(provider) {
 }
 
 function providerCollapseKey(provider) {
-  if ((provider.provider === 'codex' || provider.provider === 'opencode') && isConfiguredProvider(provider)) {
+  if ((provider.provider === 'codex' || provider.provider === 'opencode' || provider.provider === 'mimo') && isConfiguredProvider(provider)) {
     return providerAggregateKey(provider);
   }
   return provider.provider;
