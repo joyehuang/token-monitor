@@ -198,7 +198,7 @@ Response includes:
 - `devices`
 - stale status for devices that have not reported recently
 
-If multiple devices report the same provider account, the hub normally keeps the freshest valid limits status for that account. Codex is the exception: simultaneous app sessions can report different active quota buckets for the same account, so the hub keeps the tightest whole snapshot within a reset generation. When comparable reset anchors advance together, the newer generation wins immediately, including after an upstream reset or reset-credit action. Public Worker stats omit account identifiers.
+If multiple devices report the same provider account, the hub normally keeps the freshest valid limits status for that account. Codex is the exception: simultaneous app sessions can report different active quota buckets for the same account, so the hub keeps the tightest whole snapshot within a reset generation. When at least one comparable reset anchor advances and none regress, the newer generation wins immediately, including after an upstream reset or reset-credit action. Public Worker stats omit account identifiers.
 
 ## `GET /api/devices`
 

@@ -219,6 +219,95 @@ test('aggregateLimits accepts a reset-credit action when the quota cycle also ad
   assert.equal(aggregate.providers[0].sourceDeviceId, 'after-reset');
 });
 
+test('aggregateLimits selects a stable generation frontier across three mixed Codex snapshots', () => {
+  const sessionOnly = codexProvider('sha256:codex-a', 'a@example.com', 80, '2026-07-11T12:20:00.000Z');
+  sessionOnly.windows[0].resetsAt = '2026-07-11T17:00:00.000Z';
+
+  const bridge = codexProvider('sha256:codex-a', 'a@example.com', 70, '2026-07-11T12:20:00.000Z');
+  bridge.windows[0].resetsAt = '2026-07-11T16:00:00.000Z';
+  bridge.windows.push({
+    kind: 'weekly',
+    usedPercent: 30,
+    remainingPercent: 70,
+    resetsAt: '2026-07-18T22:00:00.000Z',
+    windowMinutes: 10_080
+  });
+
+  const weeklyOnly = codexProvider('sha256:codex-a', 'a@example.com', 10, '2026-07-11T12:20:00.000Z');
+  weeklyOnly.windows = [{
+    kind: 'weekly',
+    usedPercent: 90,
+    remainingPercent: 10,
+    resetsAt: '2026-07-18T21:00:00.000Z',
+    windowMinutes: 10_080
+  }];
+
+  const devices = [
+    { deviceId: 'session-new', limits: { providers: [sessionOnly] } },
+    { deviceId: 'bridge', limits: { providers: [bridge] } },
+    { deviceId: 'weekly-old', limits: { providers: [weeklyOnly] } }
+  ];
+  const permutations = [
+    devices,
+    [devices[0], devices[2], devices[1]],
+    [devices[1], devices[0], devices[2]],
+    [devices[1], devices[2], devices[0]],
+    [devices[2], devices[0], devices[1]],
+    [devices[2], devices[1], devices[0]]
+  ];
+
+  for (const ordered of permutations) {
+    const aggregate = aggregateLimits(ordered, 0, Date.parse('2026-07-11T13:00:00.000Z'));
+    assert.equal(aggregate.providers[0].sourceDeviceId, 'session-new');
+  }
+});
+
+test('aggregateLimits advances an expired Codex session cycle while the weekly window remains active', () => {
+  const oldTight = codexProvider('sha256:codex-a', 'a@example.com', 10, '2026-07-11T12:20:00.000Z');
+  oldTight.windows[0].resetsAt = '2026-07-11T12:00:00.000Z';
+  oldTight.windows.push({
+    kind: 'weekly',
+    usedPercent: 90,
+    remainingPercent: 10,
+    resetsAt: '2026-07-18T20:00:00.000Z',
+    windowMinutes: 10_080
+  });
+  const newCycle = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-07-11T12:22:00.000Z');
+  newCycle.windows[0].resetsAt = '2026-07-11T17:00:00.000Z';
+  newCycle.windows.push({
+    kind: 'weekly',
+    usedPercent: 10,
+    remainingPercent: 90,
+    resetsAt: '2026-07-18T20:00:00.000Z',
+    windowMinutes: 10_080
+  });
+
+  const aggregate = aggregateLimits([
+    { deviceId: 'old', limits: { providers: [oldTight] } },
+    { deviceId: 'new', limits: { providers: [newCycle] } }
+  ], 0, Date.parse('2026-07-11T13:00:00.000Z'));
+
+  assert.equal(aggregate.providers[0].sourceDeviceId, 'new');
+  assert.equal(aggregate.providers[0].windows[0].resetsAt, '2026-07-11T17:00:00.000Z');
+});
+
+test('aggregateLimits breaks equal Codex snapshot ties by source device id', () => {
+  const first = codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-07-11T12:20:00.000Z');
+  const second = codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-07-11T12:20:00.000Z');
+  first.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  second.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  const devices = [
+    { deviceId: 'device-b', limits: { providers: [first] } },
+    { deviceId: 'device-a', limits: { providers: [second] } }
+  ];
+
+  const forward = aggregateLimits(devices, 0, Date.parse('2026-07-11T13:00:00.000Z'));
+  const reversed = aggregateLimits([...devices].reverse(), 0, Date.parse('2026-07-11T13:00:00.000Z'));
+
+  assert.equal(forward.providers[0].sourceDeviceId, 'device-a');
+  assert.deepEqual(reversed.providers, forward.providers);
+});
+
 test('aggregateLimits accepts a new Codex cycle after the tighter window expires', () => {
   const expiredTight = codexProvider('sha256:codex-a', 'a@example.com', 12, '2026-07-11T15:20:00.000Z');
   expiredTight.windows[0].resetsAt = '2026-07-11T14:01:11.000Z';

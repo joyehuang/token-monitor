@@ -345,11 +345,10 @@ function providerWindowRank(provider, nowMs) {
   return Array.isArray(provider.windows) && provider.windows.some((window) => activeLimitWindow(window, nowMs)) ? 1 : 0;
 }
 
-function codexResetGeneration(provider, nowMs) {
+function codexResetGeneration(provider) {
   if (provider?.provider !== 'codex' || !Array.isArray(provider.windows)) return null;
   const generation = new Map();
   for (const window of provider.windows) {
-    if (!activeLimitWindow(window, nowMs)) continue;
     const resetMs = timestampMs(window.resetsAt);
     if (!resetMs) continue;
     const key = `${window.kind}:${window.label || ''}`;
@@ -358,19 +357,21 @@ function codexResetGeneration(provider, nowMs) {
   return generation.size > 0 ? generation : null;
 }
 
-function compareCodexResetGeneration(first, second, nowMs) {
-  const firstGeneration = codexResetGeneration(first, nowMs);
-  const secondGeneration = codexResetGeneration(second, nowMs);
-  if (!firstGeneration || !secondGeneration || firstGeneration.size !== secondGeneration.size) return 0;
+function compareCodexResetGeneration(first, second) {
+  const firstGeneration = codexResetGeneration(first);
+  const secondGeneration = codexResetGeneration(second);
+  if (!firstGeneration || !secondGeneration) return 0;
   let direction = 0;
+  let comparable = 0;
   for (const [key, firstReset] of firstGeneration) {
     const secondReset = secondGeneration.get(key);
-    if (!secondReset) return 0;
+    if (!secondReset) continue;
+    comparable += 1;
     const nextDirection = firstReset > secondReset ? 1 : (firstReset < secondReset ? -1 : 0);
     if (nextDirection && direction && nextDirection !== direction) return 0;
     if (nextDirection) direction = nextDirection;
   }
-  return direction;
+  return comparable > 0 ? direction : 0;
 }
 
 function codexQuotaPressure(provider, nowMs) {
@@ -403,6 +404,14 @@ function compareQuotaPressure(first, second) {
     if (firstValue > secondValue) return 1;
   }
   return 0;
+}
+
+function stableProviderTieBreak(current, candidate) {
+  const timestampDiff = timestampMs(candidate.updatedAt) - timestampMs(current.updatedAt);
+  if (timestampDiff !== 0) return timestampDiff > 0 ? candidate : current;
+  const deviceDiff = String(candidate.sourceDeviceId || '').localeCompare(String(current.sourceDeviceId || ''));
+  if (deviceDiff !== 0) return deviceDiff < 0 ? candidate : current;
+  return JSON.stringify(candidate).localeCompare(JSON.stringify(current)) < 0 ? candidate : current;
 }
 
 function codexProviderIdentityKeys(provider) {
@@ -507,16 +516,6 @@ function pickBetterProvider(current, candidate, nowMs = Date.now()) {
     && candidate.provider === 'codex'
     && current.accountKey
     && current.accountKey === candidate.accountKey) {
-    // A complete move of comparable reset anchors is a new quota generation,
-    // including an upstream reset or reset-credit action observed on one device
-    // first. It outranks an older, tighter snapshot before that snapshot expires.
-    // Reset-credit counts are deliberately not evidence: unused credits expire.
-    const generationDiff = compareCodexResetGeneration(candidate, current, nowMs);
-    if (generationDiff !== 0) return generationDiff > 0 ? candidate : current;
-
-    // Concurrent devices can otherwise expose different successful buckets for
-    // the same generation. Keep the tightest whole snapshot deterministically
-    // instead of oscillating with whichever device reported most recently.
     const currentPressure = codexQuotaPressure(current, nowMs);
     const candidatePressure = codexQuotaPressure(candidate, nowMs);
     if (currentPressure !== null && candidatePressure !== null) {
@@ -524,7 +523,34 @@ function pickBetterProvider(current, candidate, nowMs = Date.now()) {
       if (pressureDiff !== 0) return pressureDiff < 0 ? candidate : current;
     }
   }
-  return timestampMs(candidate.updatedAt) >= timestampMs(current.updatedAt) ? candidate : current;
+  return stableProviderTieBreak(current, candidate);
+}
+
+function filterMaxRank(candidates, rank) {
+  const maximum = Math.max(...candidates.map(rank));
+  return candidates.filter((candidate) => rank(candidate) === maximum);
+}
+
+function pickBestProvider(candidates, nowMs) {
+  if (candidates.length === 1) return candidates[0];
+  let eligible = filterMaxRank(candidates, (candidate) => candidate.stale ? 0 : 1);
+  eligible = filterMaxRank(eligible, (candidate) => statusRank(candidate.status));
+  eligible = filterMaxRank(eligible, (candidate) => providerWindowRank(candidate, nowMs));
+
+  const first = eligible[0];
+  if (first?.provider === 'codex' && first.accountKey
+    && eligible.every((candidate) => candidate.accountKey === first.accountKey)) {
+    // Generation precedence is a group decision, not a pairwise reduce: mixed
+    // reset anchors can make pairwise generation/pressure comparisons
+    // non-transitive. Remove every snapshot dominated by any newer comparable
+    // generation, then apply quota pressure only to the remaining frontier.
+    const generationFrontier = eligible.filter((candidate) => !eligible.some((other) => (
+      other !== candidate && compareCodexResetGeneration(other, candidate) > 0
+    )));
+    if (generationFrontier.length > 0) eligible = generationFrontier;
+  }
+
+  return eligible.reduce((best, candidate) => pickBetterProvider(best, candidate, nowMs), null);
 }
 
 function aggregateLimits(devices, staleAfterMs = 0, nowMs = Date.now()) {
@@ -548,16 +574,20 @@ function aggregateLimits(devices, staleAfterMs = 0, nowMs = Date.now()) {
         if (isConfiguredProvider(provider)) providersWithFreshConfiguredAccounts.add(provider.provider);
       }
       const key = providerAggregateKey(provider);
-      byKey.set(key, pickBetterProvider(byKey.get(key), candidate, nowMs));
+      const candidates = byKey.get(key) || [];
+      candidates.push(candidate);
+      byKey.set(key, candidates);
     }
   }
+
+  const selectedByKey = Array.from(byKey.values(), (candidates) => pickBestProvider(candidates, nowMs));
 
   // Second pass: collapse by provider name. Same OAuth account on Mac vs Windows
   // hashes to different accountKeys (keychain identity vs file path), so byKey
   // keeps them as separate entries; without this pass the renderer's per-provider
   // Map.set() would arbitrarily overwrite the fresh one with the stale one.
   const byProvider = new Map();
-  for (const candidate of byKey.values()) {
+  for (const candidate of selectedByKey) {
     const hasFreshObservation = providersWithFreshObservations.has(candidate.provider);
     if (candidate.stale && hasFreshObservation) continue;
     const configuredProviders = hasFreshObservation
