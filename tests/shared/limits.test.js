@@ -111,7 +111,7 @@ test('publicLimits preserves MiMo plan status while removing account identity', 
   assert.equal(Object.hasOwn(payload.providers[0], 'accountName'), false);
 });
 
-test('aggregateLimits merges the same Codex account across devices and keeps distinct ones', () => {
+test('aggregateLimits keeps the tightest same-generation Codex snapshot across devices', () => {
   const aggregate = aggregateLimits([
     {
       deviceId: 'macbook',
@@ -140,10 +140,98 @@ test('aggregateLimits merges the same Codex account across devices and keeps dis
     new Set(codexProviders.map((provider) => provider.accountKey)),
     new Set(['sha256:codex-a', 'sha256:codex-b', 'sha256:codex-c'])
   );
-  // The account both devices report merges into one, keeping the freshest snapshot.
+  // The account both devices report merges into one without oscillating to the
+  // freshest-but-looser snapshot.
   const accountA = codexProviders.find((provider) => provider.accountKey === 'sha256:codex-a');
-  assert.equal(accountA.windows[0].remainingPercent, 50);
-  assert.equal(accountA.sourceDeviceId, 'desktop');
+  assert.equal(accountA.windows[0].remainingPercent, 18);
+  assert.equal(accountA.sourceDeviceId, 'macbook');
+});
+
+test('aggregateLimits Codex selection is stable when device report order changes', () => {
+  const tighter = codexProvider('sha256:codex-a', 'a@example.com', 12, '2026-07-11T12:20:17.101Z');
+  const looser = codexProvider('sha256:codex-a', 'a@example.com', 96, '2026-07-11T12:22:53.166Z');
+  tighter.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  looser.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  const devices = [
+    { deviceId: 'windows', limits: { providers: [looser] } },
+    { deviceId: 'macbook', limits: { providers: [tighter] } }
+  ];
+
+  const forward = aggregateLimits(devices, 0, Date.parse('2026-07-11T13:00:00.000Z'));
+  const reversed = aggregateLimits([...devices].reverse(), 0, Date.parse('2026-07-11T13:00:00.000Z'));
+
+  assert.equal(forward.providers[0].windows[0].remainingPercent, 12);
+  assert.equal(forward.providers[0].sourceDeviceId, 'macbook');
+  assert.deepEqual(reversed.providers, forward.providers);
+});
+
+test('aggregateLimits accepts a newer Codex quota generation before the tighter snapshot expires', () => {
+  const oldTight = codexProvider('sha256:codex-a', 'a@example.com', 12, '2026-07-11T12:20:00.000Z');
+  oldTight.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  const newLoose = codexProvider('sha256:codex-a', 'a@example.com', 96, '2026-07-11T12:22:00.000Z');
+  newLoose.windows[0].resetsAt = '2026-07-11T17:00:00.000Z';
+  const devices = [
+    { deviceId: 'old', limits: { providers: [oldTight] } },
+    { deviceId: 'new', limits: { providers: [newLoose] } }
+  ];
+
+  const forward = aggregateLimits(devices, 0, Date.parse('2026-07-11T13:00:00.000Z'));
+  const reversed = aggregateLimits([...devices].reverse(), 0, Date.parse('2026-07-11T13:00:00.000Z'));
+
+  assert.equal(forward.providers[0].windows[0].remainingPercent, 96);
+  assert.equal(forward.providers[0].windows[0].resetsAt, '2026-07-11T17:00:00.000Z');
+  assert.equal(forward.providers[0].sourceDeviceId, 'new');
+  assert.deepEqual(reversed.providers, forward.providers);
+});
+
+test('aggregateLimits requires a reset-cycle move before a reset-credit decrease can replace tighter quota', () => {
+  const oldTight = codexProvider('sha256:codex-a', 'a@example.com', 12, '2026-07-11T12:20:00.000Z');
+  oldTight.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  oldTight.resetCredits = { availableCount: 2 };
+  const creditExpired = codexProvider('sha256:codex-a', 'a@example.com', 96, '2026-07-11T12:22:00.000Z');
+  creditExpired.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  creditExpired.resetCredits = { availableCount: 1 };
+
+  const aggregate = aggregateLimits([
+    { deviceId: 'old', limits: { providers: [oldTight] } },
+    { deviceId: 'expired-credit', limits: { providers: [creditExpired] } }
+  ], 0, Date.parse('2026-07-11T13:00:00.000Z'));
+
+  assert.equal(aggregate.providers[0].windows[0].remainingPercent, 12);
+  assert.equal(aggregate.providers[0].sourceDeviceId, 'old');
+});
+
+test('aggregateLimits accepts a reset-credit action when the quota cycle also advances', () => {
+  const oldTight = codexProvider('sha256:codex-a', 'a@example.com', 12, '2026-07-11T12:20:00.000Z');
+  oldTight.windows[0].resetsAt = '2026-07-11T15:00:00.000Z';
+  oldTight.resetCredits = { availableCount: 2 };
+  const afterReset = codexProvider('sha256:codex-a', 'a@example.com', 100, '2026-07-11T12:22:00.000Z');
+  afterReset.windows[0].resetsAt = '2026-07-11T17:00:00.000Z';
+  afterReset.resetCredits = { availableCount: 1 };
+
+  const aggregate = aggregateLimits([
+    { deviceId: 'old', limits: { providers: [oldTight] } },
+    { deviceId: 'after-reset', limits: { providers: [afterReset] } }
+  ], 0, Date.parse('2026-07-11T13:00:00.000Z'));
+
+  assert.equal(aggregate.providers[0].windows[0].remainingPercent, 100);
+  assert.equal(aggregate.providers[0].resetCredits.availableCount, 1);
+  assert.equal(aggregate.providers[0].sourceDeviceId, 'after-reset');
+});
+
+test('aggregateLimits accepts a new Codex cycle after the tighter window expires', () => {
+  const expiredTight = codexProvider('sha256:codex-a', 'a@example.com', 12, '2026-07-11T15:20:00.000Z');
+  expiredTight.windows[0].resetsAt = '2026-07-11T14:01:11.000Z';
+  const newCycle = codexProvider('sha256:codex-a', 'a@example.com', 96, '2026-07-11T15:20:17.101Z');
+  newCycle.windows[0].resetsAt = '2026-07-11T20:17:51.000Z';
+
+  const aggregate = aggregateLimits([
+    { deviceId: 'macbook', limits: { providers: [expiredTight] } },
+    { deviceId: 'windows', limits: { providers: [newCycle] } }
+  ], 0, Date.parse('2026-07-11T15:30:00.000Z'));
+
+  assert.equal(aggregate.providers[0].windows[0].remainingPercent, 96);
+  assert.equal(aggregate.providers[0].sourceDeviceId, 'windows');
 });
 
 test('aggregateLimits keeps Codex quota windows over a newer empty transient snapshot', () => {

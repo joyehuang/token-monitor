@@ -338,9 +338,74 @@ function providerCollapseKey(provider) {
   return provider.provider;
 }
 
-function providerWindowRank(provider) {
+function activeLimitWindow(window, nowMs) {
+  const resetMs = timestampMs(window?.resetsAt);
+  return !resetMs || resetMs > nowMs;
+}
+
+function providerWindowRank(provider, nowMs) {
   if (provider?.provider !== 'codex') return 0;
-  return Array.isArray(provider.windows) && provider.windows.length > 0 ? 1 : 0;
+  return Array.isArray(provider.windows) && provider.windows.some((window) => activeLimitWindow(window, nowMs)) ? 1 : 0;
+}
+
+function codexResetGeneration(provider, nowMs) {
+  if (provider?.provider !== 'codex' || !Array.isArray(provider.windows)) return null;
+  const generation = new Map();
+  for (const window of provider.windows) {
+    if (!activeLimitWindow(window, nowMs)) continue;
+    const resetMs = timestampMs(window.resetsAt);
+    if (!resetMs) continue;
+    const key = `${window.kind}:${window.label || ''}`;
+    generation.set(key, Math.max(generation.get(key) || 0, resetMs));
+  }
+  return generation.size > 0 ? generation : null;
+}
+
+function compareCodexResetGeneration(first, second, nowMs) {
+  const firstGeneration = codexResetGeneration(first, nowMs);
+  const secondGeneration = codexResetGeneration(second, nowMs);
+  if (!firstGeneration || !secondGeneration || firstGeneration.size !== secondGeneration.size) return 0;
+  let direction = 0;
+  for (const [key, firstReset] of firstGeneration) {
+    const secondReset = secondGeneration.get(key);
+    if (!secondReset) return 0;
+    const nextDirection = firstReset > secondReset ? 1 : (firstReset < secondReset ? -1 : 0);
+    if (nextDirection && direction && nextDirection !== direction) return 0;
+    if (nextDirection) direction = nextDirection;
+  }
+  return direction;
+}
+
+function codexQuotaPressure(provider, nowMs) {
+  if (provider?.provider !== 'codex' || !Array.isArray(provider.windows)) return null;
+  const activeWindows = provider.windows
+    .filter((window) => activeLimitWindow(window, nowMs))
+    .map((window) => ({
+      kind: window.kind,
+      remaining: numberOrNull(window.remainingPercent),
+      resetMs: timestampMs(window.resetsAt) || Number.POSITIVE_INFINITY
+    }))
+    .filter((window) => window.remaining !== null);
+  if (activeWindows.length === 0) return null;
+  const remainingForKind = (kind) => {
+    const values = activeWindows.filter((window) => window.kind === kind).map((window) => window.remaining);
+    return values.length > 0 ? Math.min(...values) : 101;
+  };
+  return [
+    Math.min(...activeWindows.map((window) => window.remaining)),
+    ...WINDOW_ORDER.map(remainingForKind),
+    Math.min(...activeWindows.map((window) => window.resetMs))
+  ];
+}
+
+function compareQuotaPressure(first, second) {
+  for (let index = 0; index < Math.max(first.length, second.length); index += 1) {
+    const firstValue = first[index] ?? Number.POSITIVE_INFINITY;
+    const secondValue = second[index] ?? Number.POSITIVE_INFINITY;
+    if (firstValue < secondValue) return -1;
+    if (firstValue > secondValue) return 1;
+  }
+  return 0;
 }
 
 function codexProviderIdentityKeys(provider) {
@@ -434,13 +499,34 @@ function mergeCodexTransientWindows(previousInput, currentInput, nowMs = Date.no
   };
 }
 
-function pickBetterProvider(current, candidate) {
+function pickBetterProvider(current, candidate, nowMs = Date.now()) {
   if (!current) return candidate;
   if (current.stale !== candidate.stale) return current.stale ? candidate : current;
   const rankDiff = statusRank(candidate.status) - statusRank(current.status);
   if (rankDiff !== 0) return rankDiff > 0 ? candidate : current;
-  const windowRankDiff = providerWindowRank(candidate) - providerWindowRank(current);
+  const windowRankDiff = providerWindowRank(candidate, nowMs) - providerWindowRank(current, nowMs);
   if (windowRankDiff !== 0) return windowRankDiff > 0 ? candidate : current;
+  if (current.provider === 'codex'
+    && candidate.provider === 'codex'
+    && current.accountKey
+    && current.accountKey === candidate.accountKey) {
+    // A complete move of comparable reset anchors is a new quota generation,
+    // including an upstream reset or reset-credit action observed on one device
+    // first. It outranks an older, tighter snapshot before that snapshot expires.
+    // Reset-credit counts are deliberately not evidence: unused credits expire.
+    const generationDiff = compareCodexResetGeneration(candidate, current, nowMs);
+    if (generationDiff !== 0) return generationDiff > 0 ? candidate : current;
+
+    // Concurrent devices can otherwise expose different successful buckets for
+    // the same generation. Keep the tightest whole snapshot deterministically
+    // instead of oscillating with whichever device reported most recently.
+    const currentPressure = codexQuotaPressure(current, nowMs);
+    const candidatePressure = codexQuotaPressure(candidate, nowMs);
+    if (currentPressure !== null && candidatePressure !== null) {
+      const pressureDiff = compareQuotaPressure(candidatePressure, currentPressure);
+      if (pressureDiff !== 0) return pressureDiff < 0 ? candidate : current;
+    }
+  }
   return timestampMs(candidate.updatedAt) >= timestampMs(current.updatedAt) ? candidate : current;
 }
 
@@ -465,7 +551,7 @@ function aggregateLimits(devices, staleAfterMs = 0, nowMs = Date.now()) {
         if (isConfiguredProvider(provider)) providersWithFreshConfiguredAccounts.add(provider.provider);
       }
       const key = providerAggregateKey(provider);
-      byKey.set(key, pickBetterProvider(byKey.get(key), candidate));
+      byKey.set(key, pickBetterProvider(byKey.get(key), candidate, nowMs));
     }
   }
 
@@ -482,7 +568,7 @@ function aggregateLimits(devices, staleAfterMs = 0, nowMs = Date.now()) {
       : providersWithConfiguredAccounts;
     if (!isConfiguredProvider(candidate) && configuredProviders.has(candidate.provider)) continue;
     const collapseKey = providerCollapseKey(candidate);
-    byProvider.set(collapseKey, pickBetterProvider(byProvider.get(collapseKey), candidate));
+    byProvider.set(collapseKey, pickBetterProvider(byProvider.get(collapseKey), candidate, nowMs));
   }
   aggregate.providers = Array.from(byProvider.values())
     .sort((a, b) => {
