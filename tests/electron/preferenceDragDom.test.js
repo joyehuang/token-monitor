@@ -226,6 +226,18 @@ test('main section holds views; appearance is its own section; window holds beha
   );
 });
 
+test('theme code feedback clears when the displayed code changes', () => {
+  const app = readRendererFile('app.js');
+  const build = functionBody(app, 'buildAppearanceColorControls', 'renderThemePresetChips');
+  const clear = functionBody(app, 'clearThemeCodeStatus', 'applyThemeCodeFromInput');
+
+  assert.match(build, /themeCodeInput\.value !== code/);
+  assert.match(build, /clearThemeCodeStatus\(\)/);
+  assert.match(clear, /themeCodeStatus\.textContent = ''/);
+  assert.match(clear, /classList\.remove\('success', 'error'\)/);
+  assert.match(app, /themeCodeInput\?\.addEventListener\('input', clearThemeCodeStatus\)/);
+});
+
 test('Trends has a master toggle separate from main-screen visibility', () => {
   const app = readRendererFile('app.js');
   const css = readRendererFile('styles.css');

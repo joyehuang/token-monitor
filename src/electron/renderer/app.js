@@ -3731,7 +3731,11 @@ function buildAppearanceColorControls() {
   renderThemeColorGrid();
   renderVendorColorList();
   if (els.themeCodeInput && document.activeElement !== els.themeCodeInput) {
-    els.themeCodeInput.value = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
+    const code = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
+    if (els.themeCodeInput.value !== code) {
+      els.themeCodeInput.value = code;
+      clearThemeCodeStatus();
+    }
   }
 }
 
@@ -3862,6 +3866,12 @@ function showThemeCodeStatus(key, type = '') {
   els.themeCodeStatus.textContent = t(key);
   els.themeCodeStatus.classList.toggle('success', type === 'success');
   els.themeCodeStatus.classList.toggle('error', type === 'error');
+}
+
+function clearThemeCodeStatus() {
+  if (!els.themeCodeStatus) return;
+  els.themeCodeStatus.textContent = '';
+  els.themeCodeStatus.classList.remove('success', 'error');
 }
 
 async function applyThemeCodeFromInput() {
@@ -5910,6 +5920,7 @@ els.themeCodeInput?.addEventListener('keydown', (event) => {
   event.preventDefault();
   void applyThemeCodeFromInput();
 });
+els.themeCodeInput?.addEventListener('input', clearThemeCodeStatus);
 els.systemGlassInput.addEventListener('change', saveAppearanceFromControls);
 els.liveDotInput.addEventListener('change', saveAppearanceFromControls);
 els.toolIconsInput.addEventListener('change', saveAppearanceFromControls);
