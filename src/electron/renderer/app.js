@@ -202,6 +202,7 @@ Object.assign(els, {
   hubSecretInput: document.getElementById('hubSecretInput'),
   hubSecretCopyButton: document.getElementById('hubSecretCopyButton'),
   hubSecretRegenButton: document.getElementById('hubSecretRegenButton'),
+  secretPasteButton: document.getElementById('secretPasteButton'),
   hubStatusRow: document.getElementById('hubStatusRow'),
   syncClientStatus: document.getElementById('syncClientStatus'),
   hubAddressList: document.getElementById('hubAddressList'),
@@ -5236,6 +5237,14 @@ els.hubSecretRegenButton?.addEventListener('click', async () => {
   state.settings = { ...state.settings, hubHostSecret: info.secret };
   els.hubSecretInput.value = info.secret;
   renderHubStatus();
+});
+els.secretPasteButton?.addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      els.secretInput.value = text.trim();
+    }
+  } catch (_) {}
 });
 els.limitsRefreshInput.addEventListener('change', async () => {
   await saveSettings({ limitsRefreshMs: Number(els.limitsRefreshInput.value) });
