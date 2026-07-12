@@ -6,6 +6,7 @@
   color-scheme: dark;
   --glass-rgb: 11, 11, 16;
   --glass-alpha: 0.68;
+  --theme-base-alpha: 0;
   --glass: rgba(var(--glass-rgb), var(--glass-alpha));
   --overlay-rgb: 255, 255, 255;
   --line-rgb: 232, 238, 244;
@@ -19,7 +20,9 @@ html, body { margin: 0; height: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
-  background: var(--glass);
+  background:
+    linear-gradient(rgba(var(--glass-rgb), var(--theme-base-alpha)), rgba(var(--glass-rgb), var(--theme-base-alpha))),
+    var(--glass);
   display: flex;
   flex-direction: column;
   overflow: hidden;

@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const {
   INTERFACE_COLOR_KEYS,
+  THEME_CODE_VERSION,
   THEME_VAR_MAP,
   DEFAULT_THEME,
   THEME_PRESETS,
@@ -13,6 +14,8 @@ const {
   normalizeHex,
   normalizeOverrides,
   mergeThemeColors,
+  encodeThemeCode,
+  decodeThemeCode,
   hexToRgbTriplet,
   isLightHex,
   themeCssVarEntries,
@@ -59,7 +62,11 @@ test('themeCssVarEntries maps bg to --glass-rgb and mirrors text onto --number',
   assert.equal(set['--number'], '#abcdef'); // big TOTAL figure follows text
   assert.equal(set['--green'], '#112233'); // accent maps to --green
   assert.equal(set['--accent-rgb'], '17, 34, 51'); // accent also flips the tints
+  assert.equal(set['--blue-rgb'], '17, 34, 51'); // primary controls follow accent
+  assert.equal(set['--chart-rgb'], '17, 34, 51'); // charts follow accent too
   assert.equal(cleared['--accent-rgb'], null); // absent accent -> :root default
+  assert.equal(cleared['--blue-rgb'], null);
+  assert.equal(cleared['--chart-rgb'], null);
 });
 
 test('isLightHex detects pale backgrounds', () => {
@@ -82,11 +89,18 @@ test('themeCssVarEntries flips the overlay/border system for light backgrounds',
   // Light bg -> dark overlays/borders, a white card surface, light sunken
   // tracks, and the light native control scheme.
   const light = byName(themeCssVarEntries({ bg: '#f6f7f9' }));
-  assert.equal(light['--overlay-rgb'], '15, 18, 24');
-  assert.equal(light['--line-rgb'], '24, 28, 36');
+  assert.equal(light['--overlay-rgb'], '9, 9, 11');
+  assert.equal(light['--line-rgb'], '9, 9, 11');
+  assert.equal(light['--line-alpha'], '0.12');
+  assert.equal(light['--line-strong-alpha'], '0.2');
   assert.equal(light['--panel-rgb'], '255, 255, 255');
-  assert.equal(light['--sunken-rgb'], '188, 196, 206');
-  assert.equal(light['--chart-rgb'], '82, 82, 91');
+  assert.equal(light['--sunken-rgb'], '242, 242, 243');
+  assert.equal(light['--input-rgb'], '228, 228, 231');
+  assert.equal(light['--blue-rgb'], '81, 126, 148');
+  assert.equal(light['--chart-rgb'], '81, 126, 148');
+  assert.equal(light['--shade-rgb'], '255, 255, 255');
+  assert.equal(light['--shadow'], 'rgba(9, 9, 11, 0.06)');
+  assert.equal(light['--theme-base-alpha'], '0.9');
   assert.equal(light['color-scheme'], 'light');
 
   // No bg override resolves to the dark default, so no flip.
@@ -114,7 +128,7 @@ test('Joye light preset mirrors the site light palette', () => {
   assert.deepEqual(light.colors, {
     accent: '#517e94',
     bg: '#fcfcfd',
-    text: '#08080a',
+    text: '#09090b',
     muted: '#45454a'
   });
 });
@@ -143,6 +157,37 @@ test('mergeThemeColors layers valid overrides on defaults', () => {
   assert.equal(merged.accent, '#111111');
   assert.equal(merged.text, DEFAULT_THEME.text); // invalid override ignored
   assert.equal(merged.muted, DEFAULT_THEME.muted); // absent key falls back
+});
+
+test('TM1 theme codes round-trip the four interface colours in a stable order', () => {
+  assert.equal(THEME_CODE_VERSION, 'TM1');
+  const code = encodeThemeCode({
+    accent: '#112233',
+    bg: '#445566',
+    text: '#AABBCC',
+    muted: '#778899'
+  });
+  assert.equal(code, 'TM1-112233-445566-AABBCC-778899');
+  assert.deepEqual(decodeThemeCode(code), {
+    ok: true,
+    code,
+    colors: {
+      accent: '#112233',
+      bg: '#445566',
+      text: '#aabbcc',
+      muted: '#778899'
+    }
+  });
+});
+
+test('TM1 theme codes normalize input and reject malformed or future versions', () => {
+  assert.equal(
+    decodeThemeCode('  tm1-b4ebfd-0b0b10-fafafa-bcbcc2  ').code,
+    'TM1-B4EBFD-0B0B10-FAFAFA-BCBCC2'
+  );
+  assert.deepEqual(decodeThemeCode('TM1-not-a-theme'), { ok: false, reason: 'invalid' });
+  assert.deepEqual(decodeThemeCode('TM2-B4EBFD-0B0B10-FAFAFA-BCBCC2'), { ok: false, reason: 'unsupportedVersion' });
+  assert.deepEqual(decodeThemeCode(''), { ok: false, reason: 'invalid' });
 });
 
 test('mergeVendorColors overrides brand defaults, ignoring junk', () => {

@@ -178,6 +178,11 @@ test('main section holds views; appearance is its own section; window holds beha
   assert.match(appearance, /id="glassInput"/);
   assert.match(appearance, /id="zoomInput"/);
   assert.match(appearance, /id="themePresetChips"/);
+  assert.match(appearance, /id="themeCodeInput"/);
+  assert.match(appearance, /id="applyThemeCodeButton"/);
+  assert.match(appearance, /id="copyThemeCodeButton"/);
+  assert.match(appearance, /id="themeCodeStatus"[^>]*aria-live="polite"/);
+  assert.match(appearance, /<details id="themeAdvancedCustomization"/);
   assert.match(appearance, /id="themeColorGrid"/);
   assert.match(appearance, /id="vendorColorList"/);
 

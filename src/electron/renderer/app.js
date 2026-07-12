@@ -246,6 +246,10 @@ Object.assign(els, {
   appearanceSettingsSummary: document.getElementById('appearanceSettingsSummary'),
   themePresetChips: document.getElementById('themePresetChips'),
   themeColorGrid: document.getElementById('themeColorGrid'),
+  themeCodeInput: document.getElementById('themeCodeInput'),
+  applyThemeCodeButton: document.getElementById('applyThemeCodeButton'),
+  copyThemeCodeButton: document.getElementById('copyThemeCodeButton'),
+  themeCodeStatus: document.getElementById('themeCodeStatus'),
   vendorColorList: document.getElementById('vendorColorList'),
   resetThemeColorsButton: document.getElementById('resetThemeColorsButton'),
   resetVendorColorsButton: document.getElementById('resetVendorColorsButton'),
@@ -3169,6 +3173,9 @@ function buildAppearanceColorControls() {
   renderThemePresetChips();
   renderThemeColorGrid();
   renderVendorColorList();
+  if (els.themeCodeInput && document.activeElement !== els.themeCodeInput) {
+    els.themeCodeInput.value = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
+  }
 }
 
 function renderThemePresetChips() {
@@ -3292,6 +3299,37 @@ async function commitThemeColors(overrides) {
   renderSettingsSummaries();
   syncThemeToggleButton();
   await saveSettings({ themeColors: overrides });
+}
+
+function showThemeCodeStatus(key, type = '') {
+  if (!els.themeCodeStatus) return;
+  els.themeCodeStatus.textContent = t(key);
+  els.themeCodeStatus.classList.toggle('success', type === 'success');
+  els.themeCodeStatus.classList.toggle('error', type === 'error');
+}
+
+async function applyThemeCodeFromInput() {
+  const parsed = themePresetsApi.decodeThemeCode(els.themeCodeInput?.value);
+  if (!parsed.ok) {
+    const key = parsed.reason === 'unsupportedVersion'
+      ? 'settings.appearance.themeCodeUnsupported'
+      : 'settings.appearance.themeCodeInvalid';
+    showThemeCodeStatus(key, 'error');
+    return;
+  }
+  els.themeCodeInput.value = parsed.code;
+  await commitThemeColors(parsed.colors);
+  showThemeCodeStatus('settings.appearance.themeCodeApplied', 'success');
+}
+
+async function copyCurrentThemeCode() {
+  const code = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
+  els.themeCodeInput.value = code;
+  const copied = await copyToClipboard(code);
+  showThemeCodeStatus(
+    copied ? 'settings.appearance.themeCodeCopied' : 'settings.appearance.themeCodeCopyFailed',
+    copied ? 'success' : 'error'
+  );
 }
 
 function previewVendorColor(id, value) {
@@ -3731,13 +3769,17 @@ function renderHubAddresses(addresses, port) {
 
 async function copyToClipboard(text, button) {
   try {
-    await navigator.clipboard.writeText(text);
+    if (window.tokenMonitor.copyText) await window.tokenMonitor.copyText(text);
+    else await navigator.clipboard.writeText(text);
     if (button) {
       const previous = button.textContent;
       button.textContent = '✓';
       setTimeout(() => { button.textContent = previous; }, 900);
     }
-  } catch (_) { /* clipboard blocked; no-op */ }
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 async function refreshHubInfo() {
@@ -5251,6 +5293,13 @@ els.blurInput.addEventListener('input', applyAppearanceFromControls);
 els.zoomInput.addEventListener('input', applyAppearanceFromControls);
 els.resetThemeColorsButton?.addEventListener('click', () => commitThemeColors({}));
 els.resetVendorColorsButton?.addEventListener('click', () => commitVendorColors({}));
+els.applyThemeCodeButton?.addEventListener('click', () => { void applyThemeCodeFromInput(); });
+els.copyThemeCodeButton?.addEventListener('click', () => { void copyCurrentThemeCode(); });
+els.themeCodeInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  void applyThemeCodeFromInput();
+});
 els.systemGlassInput.addEventListener('change', saveAppearanceFromControls);
 els.liveDotInput.addEventListener('change', saveAppearanceFromControls);
 els.toolIconsInput.addEventListener('change', saveAppearanceFromControls);

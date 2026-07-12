@@ -6,11 +6,14 @@
      visible on a pale background — see themeCssVarEntries(). */
   --overlay-rgb: 255, 255, 255;
   --line-rgb: 232, 238, 244;
-  /* Recessed surfaces: the settings panel/tooltip card (--panel-rgb) and sunken
-     tracks/inputs (--sunken-rgb). Both flip light on a light theme. */
+  /* Recessed surfaces: card/tooltip chrome, muted fills, and form inputs each
+     follow the corresponding joyehuang.me semantic token. */
   --panel-rgb: 9, 9, 11;
-  --sunken-rgb: 12, 12, 18;
+  --sunken-rgb: 29, 29, 32;
+  --input-rgb: 39, 39, 42;
+  --shade-rgb: 0, 0, 0;
   --glass-alpha: 0.68;
+  --theme-base-alpha: 0;
   --line-alpha: 0.138;
   --line-strong-alpha: 0.238;
   --control-alpha: 0.049;
@@ -21,16 +24,15 @@
   --line: rgba(var(--line-rgb), var(--line-alpha));
   --line-strong: rgba(var(--line-rgb), var(--line-strong-alpha));
   --text: #fafafa;
-  --muted: #bfc0c7;
+  --muted: #bcbcc2;
   --green: #b4ebfd;
   /* RGB triplet of the accent (--green), for the accent-tinted borders / glows /
      active states. Driven from the chosen accent so they flip together — see
      themeCssVarEntries(). Must match --green above. */
   --accent-rgb: 180, 235, 253;
   --number: #fafafa;
-  /* Semantic blue, exposed as a triplet so the trend line and its area fill can
-     share one hue (and match the blue heatmap ramp) instead of the fill borrowing
-     the customisable --accent. */
+  /* Primary data colour. It defaults to the Joye dark accent and follows a
+     selected/custom theme accent through themeCssVarEntries(). */
   --blue-rgb: 180, 235, 253;
   --blue: rgb(var(--blue-rgb));
   --chart-rgb: 180, 235, 253;
@@ -75,7 +77,8 @@ input, textarea, [contenteditable="true"] {
   clip-path: inset(0 round 14px);
   background:
     linear-gradient(180deg, rgba(var(--overlay-rgb), var(--highlight-alpha)), rgba(var(--overlay-rgb), 0.022)),
-    linear-gradient(135deg, rgba(var(--overlay-rgb), 0.035), rgba(0, 0, 0, 0.09)),
+    linear-gradient(135deg, rgba(var(--overlay-rgb), 0.035), rgba(var(--shade-rgb), 0.09)),
+    linear-gradient(rgba(var(--glass-rgb), var(--theme-base-alpha)), rgba(var(--glass-rgb), var(--theme-base-alpha))),
     var(--glass);
   box-shadow: 0 22px 55px var(--shadow), inset 0 1px 0 rgba(var(--overlay-rgb), 0.13);
   -webkit-backdrop-filter: blur(32px) saturate(115%);
@@ -154,7 +157,8 @@ html.floating-bubble-collapsed-right,
 body.floating-bubble-collapsed-right {
   background:
     linear-gradient(180deg, rgba(var(--overlay-rgb), var(--highlight-alpha)), rgba(var(--overlay-rgb), 0.022)),
-    linear-gradient(135deg, rgba(var(--overlay-rgb), 0.035), rgba(0, 0, 0, 0.09)),
+    linear-gradient(135deg, rgba(var(--overlay-rgb), 0.035), rgba(var(--shade-rgb), 0.09)),
+    linear-gradient(rgba(var(--glass-rgb), var(--theme-base-alpha)), rgba(var(--glass-rgb), var(--theme-base-alpha))),
     var(--glass),
     rgb(var(--glass-rgb));
 }
@@ -735,7 +739,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   padding: 7px 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(var(--sunken-rgb), 0.36);
+  background: rgb(var(--sunken-rgb));
 }
 .managed-account-row.disabled .managed-account-email,
 .managed-account-row.disabled .managed-account-info {
@@ -814,7 +818,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(var(--sunken-rgb), 0.36);
+  background: rgb(var(--sunken-rgb));
   color: var(--muted);
   font-size: 9px;
   line-height: 1.4;
@@ -960,7 +964,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(var(--sunken-rgb), 0.48);
+  background: rgb(var(--sunken-rgb));
 }
 .settings-panel .rate-mode-option {
   display: inline-flex;
@@ -1449,6 +1453,63 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .theme-preset-chip:hover { border-color: var(--line-strong); color: var(--text); }
 .theme-preset-chip.active { border-color: rgba(var(--accent-rgb), 0.58); color: var(--green); background: rgba(var(--accent-rgb), 0.08); }
 .theme-preset-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25); }
+.theme-code-share {
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(var(--sunken-rgb));
+}
+.theme-code-label { color: var(--text); font-size: 11px; }
+.theme-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
+.settings-panel input.theme-code-input {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+.theme-code-action {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(var(--overlay-rgb), var(--control-alpha));
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.theme-code-action:hover { border-color: var(--line-strong); color: var(--text); }
+.theme-code-status { min-height: 0; margin: 0; font-size: 10px; line-height: 1.35; }
+.theme-code-status:empty { display: none; }
+.theme-code-status.success { color: var(--green); }
+.theme-code-status.error { color: var(--red); }
+.theme-advanced-customization { border-top: 1px solid var(--line); }
+.theme-advanced-customization > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 2px 2px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  list-style: none;
+}
+.theme-advanced-customization > summary::-webkit-details-marker { display: none; }
+.theme-advanced-customization > summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+.theme-advanced-customization[open] > summary::before { transform: rotate(45deg); }
+.theme-advanced-customization > summary:hover { color: var(--text); }
+.theme-advanced-content { display: grid; gap: 10px; padding-top: 8px; }
 .color-picker-grid { display: grid; gap: 6px; }
 .color-picker-row, .vendor-color-row {
   display: grid;
@@ -1483,7 +1544,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   padding: 7px 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(var(--sunken-rgb), 0.48);
+  background: rgb(var(--input-rgb));
   color: var(--text);
   outline: none;
 }
@@ -2289,7 +2350,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .row-metrics { display: grid; flex: 0 0 auto; gap: 2px; min-width: max-content; text-align: right; }
 .row-value { color: var(--text); white-space: nowrap; }
 .row-cost { color: var(--muted); font-size: 10px; white-space: nowrap; }
-.bar { width: 100%; height: 6px; overflow: hidden; border-radius: 3px; background: rgba(var(--sunken-rgb), 0.46); box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.04); }
+.bar { width: 100%; height: 6px; overflow: hidden; border-radius: 3px; background: rgb(var(--sunken-rgb)); box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.04); }
 .bar-fill { height: 100%; width: 0; border-radius: 3px; background: var(--blue); transition: width 450ms ease; }
 .row.stale .row-name, .row.stale .row-value, .row.stale .row-cost { color: var(--muted); }
 .home-device-badge,
@@ -2579,7 +2640,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   height: 6px;
   overflow: hidden;
   border-radius: 3px;
-  background: rgba(var(--sunken-rgb), 0.44);
+  background: rgb(var(--sunken-rgb));
 }
 .limit-meter-fill {
   width: 0;
@@ -3343,7 +3404,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   padding: 7px 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(var(--sunken-rgb), 0.36);
+  background: rgb(var(--sunken-rgb));
 }
 .opencode-profile-item .profile-toggle {
   justify-self: center;

@@ -16,6 +16,7 @@
   // they only surface in edge states (links, warnings, errors) and --purple is
   // unused entirely, so a picker for them would be a no-op for everyday use.
   const INTERFACE_COLOR_KEYS = ['accent', 'bg', 'text', 'muted'];
+  const THEME_CODE_VERSION = 'TM1';
 
   const THEME_VAR_MAP = {
     accent: '--green',
@@ -31,7 +32,7 @@
     accent: '#b4ebfd',
     bg: '#0b0b10',
     text: '#fafafa',
-    muted: '#bfc0c7'
+    muted: '#bcbcc2'
   };
 
   // Curated one-click themes. Each is a full palette — accent + background tint
@@ -40,17 +41,21 @@
   // The light preset relies on the overlay flip in themeCssVarEntries().
   const THEME_PRESETS = [
     { id: 'joyeDark', colors: { ...DEFAULT_THEME } },
-    { id: 'joyeLight', colors: { accent: '#517e94', bg: '#fcfcfd', text: '#08080a', muted: '#45454a' } }
+    { id: 'joyeLight', colors: { accent: '#517e94', bg: '#fcfcfd', text: '#09090b', muted: '#45454a' } }
   ];
 
   // Surface RGBs used when the background is light, so overlays/borders read as
   // subtle dark-on-light, the settings/tooltip card becomes a white card, and
   // sunken inputs/tracks become light grey — instead of staying dark.
-  const LIGHT_OVERLAY_RGB = '15, 18, 24';
-  const LIGHT_LINE_RGB = '24, 28, 36';
+  const LIGHT_OVERLAY_RGB = '9, 9, 11';
+  const LIGHT_LINE_RGB = '9, 9, 11';
   const LIGHT_PANEL_RGB = '255, 255, 255';
-  const LIGHT_SUNKEN_RGB = '188, 196, 206';
-  const LIGHT_CHART_RGB = '82, 82, 91';
+  const LIGHT_SUNKEN_RGB = '242, 242, 243';
+  const LIGHT_INPUT_RGB = '228, 228, 231';
+  const LIGHT_PRIMARY_RGB = '81, 126, 148';
+  const LIGHT_SHADE_RGB = '255, 255, 255';
+  const LIGHT_SHADOW = 'rgba(9, 9, 11, 0.06)';
+  const LIGHT_BASE_ALPHA = '0.9';
 
   // Vendors shown in the vendor-colour list, tracked clients first. Vendors not
   // listed here but present in clientColors are appended after these, then the
@@ -128,6 +133,29 @@
     return { ...DEFAULT_THEME, ...clean };
   }
 
+  // Portable, offline theme code. The fixed field order is part of the TM1
+  // format, so future schemas can add fields under a new version without
+  // silently changing how an older shared code is interpreted.
+  function encodeThemeCode(overrides) {
+    const colors = mergeThemeColors(overrides);
+    const fields = INTERFACE_COLOR_KEYS.map((key) => colors[key].slice(1).toUpperCase());
+    return `${THEME_CODE_VERSION}-${fields.join('-')}`;
+  }
+
+  function decodeThemeCode(value) {
+    const code = typeof value === 'string' ? value.trim() : '';
+    const version = /^TM(\d+)(?:-|$)/i.exec(code);
+    if (version && version[1] !== '1') return { ok: false, reason: 'unsupportedVersion' };
+
+    const match = /^TM1-([0-9a-f]{6})-([0-9a-f]{6})-([0-9a-f]{6})-([0-9a-f]{6})$/i.exec(code);
+    if (!match) return { ok: false, reason: 'invalid' };
+
+    const colors = Object.fromEntries(
+      INTERFACE_COLOR_KEYS.map((key, index) => [key, `#${match[index + 1].toLowerCase()}`])
+    );
+    return { ok: true, colors, code: encodeThemeCode(colors) };
+  }
+
   function hexToRgbTriplet(hex) {
     const v = String(hex).replace('#', '');
     return `${parseInt(v.slice(0, 2), 16)}, ${parseInt(v.slice(2, 4), 16)}, ${parseInt(v.slice(4, 6), 16)}`;
@@ -150,6 +178,7 @@
   function themeCssVarEntries(overrides) {
     const clean = normalizeOverrides(overrides, INTERFACE_COLOR_KEYS);
     const entries = [];
+    const accentRgb = clean.accent ? hexToRgbTriplet(clean.accent) : null;
     for (const key of INTERFACE_COLOR_KEYS) {
       const value = clean[key] || null;
       if (key === 'bg') {
@@ -160,7 +189,7 @@
       if (key === 'text') entries.push({ name: '--number', value });
       // Accent also drives --accent-rgb so the tinted borders / glows / active
       // states flip with it, not just the accent text colour.
-      if (key === 'accent') entries.push({ name: '--accent-rgb', value: value ? hexToRgbTriplet(value) : null });
+      if (key === 'accent') entries.push({ name: '--accent-rgb', value: accentRgb });
     }
     // Flip the overlay/border system + native control scheme when the resolved
     // background is light, so a white theme (or any light custom bg) doesn't
@@ -169,9 +198,23 @@
     const light = isLightHex(clean.bg);
     entries.push({ name: '--overlay-rgb', value: light ? LIGHT_OVERLAY_RGB : null });
     entries.push({ name: '--line-rgb', value: light ? LIGHT_LINE_RGB : null });
+    entries.push({ name: '--line-alpha', value: light ? '0.12' : null });
+    entries.push({ name: '--line-strong-alpha', value: light ? '0.2' : null });
     entries.push({ name: '--panel-rgb', value: light ? LIGHT_PANEL_RGB : null });
     entries.push({ name: '--sunken-rgb', value: light ? LIGHT_SUNKEN_RGB : null });
-    entries.push({ name: '--chart-rgb', value: light ? LIGHT_CHART_RGB : null });
+    entries.push({ name: '--input-rgb', value: light ? LIGHT_INPUT_RGB : null });
+    // Primary controls and data visualisations should follow the chosen accent.
+    // A light background without an explicit accent falls back to the site's
+    // light primary so pale dark-theme cyan never disappears on white.
+    const primaryRgb = accentRgb || (light ? LIGHT_PRIMARY_RGB : null);
+    entries.push({ name: '--blue-rgb', value: primaryRgb });
+    entries.push({ name: '--chart-rgb', value: primaryRgb });
+    entries.push({ name: '--shade-rgb', value: light ? LIGHT_SHADE_RGB : null });
+    entries.push({ name: '--shadow', value: light ? LIGHT_SHADOW : null });
+    // Light mode on the website is an opaque page, while the widget's normal
+    // glass layer is only 68% opaque. Add a bright base beneath that user-
+    // controlled glass layer so a dark desktop cannot turn it grey.
+    entries.push({ name: '--theme-base-alpha', value: light ? LIGHT_BASE_ALPHA : null });
     entries.push({ name: 'color-scheme', value: light ? 'light' : null });
     return entries;
   }
@@ -205,6 +248,7 @@
 
   return {
     INTERFACE_COLOR_KEYS,
+    THEME_CODE_VERSION,
     THEME_VAR_MAP,
     DEFAULT_THEME,
     THEME_PRESETS,
@@ -214,6 +258,8 @@
     normalizeHex,
     normalizeOverrides,
     mergeThemeColors,
+    encodeThemeCode,
+    decodeThemeCode,
     hexToRgbTriplet,
     isLightHex,
     themeCssVarEntries,
