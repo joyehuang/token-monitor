@@ -242,17 +242,32 @@
                 </div>
               </div>
               <div id="themePresetChips" class="theme-preset-chips"></div>
-              <div id="themeColorGrid" class="color-picker-grid"></div>
-            </div>
-            <div class="settings-subgroup settings-vendor-color-group">
-              <div class="settings-note-row">
-                <div class="settings-group-header"><span data-i18n="settings.appearance.vendorTitle">Vendor Colors</span></div>
-                <div class="tool-header-actions">
-                  <button id="resetVendorColorsButton" class="tool-header-action" type="button" title="Reset to brand" aria-label="Reset to brand" data-i18n-title="settings.appearance.resetBrand" data-i18n-aria-label="settings.appearance.resetBrand"><span aria-hidden="true">↺</span></button>
+              <div class="theme-code-share">
+                <label class="theme-code-label" for="themeCodeInput" data-i18n="settings.appearance.themeCodeLabel">Theme Code</label>
+                <div class="theme-code-row">
+                  <input id="themeCodeInput" class="theme-code-input" type="text" maxlength="64" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TM1-..." data-i18n-placeholder="settings.appearance.themeCodePlaceholder" />
+                  <button id="applyThemeCodeButton" class="theme-code-action" type="button" data-i18n="settings.appearance.themeCodeApply">Apply</button>
+                  <button id="copyThemeCodeButton" class="theme-code-action" type="button" data-i18n="settings.appearance.themeCodeCopy">Copy current</button>
                 </div>
+                <p class="settings-note" data-i18n="settings.appearance.themeCodeNote">Shares interface colours only. Vendor colours and appearance preferences stay local.</p>
+                <p id="themeCodeStatus" class="theme-code-status" aria-live="polite"></p>
               </div>
-              <p class="settings-note" data-i18n="settings.appearance.vendorNote">Override the chart and list colour for each tool. Reset returns it to the brand colour.</p>
-              <div id="vendorColorList" class="vendor-color-list"></div>
+              <details id="themeAdvancedCustomization" class="theme-advanced-customization">
+                <summary data-i18n="settings.appearance.advanced">Advanced customization</summary>
+                <div class="theme-advanced-content">
+                  <div id="themeColorGrid" class="color-picker-grid"></div>
+                  <div class="settings-subgroup settings-vendor-color-group">
+                    <div class="settings-note-row">
+                      <div class="settings-group-header"><span data-i18n="settings.appearance.vendorTitle">Vendor Colors</span></div>
+                      <div class="tool-header-actions">
+                        <button id="resetVendorColorsButton" class="tool-header-action" type="button" title="Reset to brand" aria-label="Reset to brand" data-i18n-title="settings.appearance.resetBrand" data-i18n-aria-label="settings.appearance.resetBrand"><span aria-hidden="true">↺</span></button>
+                      </div>
+                    </div>
+                    <p class="settings-note" data-i18n="settings.appearance.vendorNote">Override the chart and list colour for each tool. Reset returns it to the brand colour.</p>
+                    <div id="vendorColorList" class="vendor-color-list"></div>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
         </div>

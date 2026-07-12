@@ -3593,6 +3593,10 @@ app.whenReady().then(() => {
     loginItemSupported: loginItemEnabledHere(),
     loginItemOpenAtLogin: currentLoginItemState()
   }));
+  ipcMain.handle('clipboard:write', (_event, text) => {
+    clipboard.writeText(String(text || ''));
+    return true;
+  });
   ipcMain.handle('app:openExternal', (_event, url) => {
     if (!isAllowedExternalUrl(url)) return { ok: false, error: 'url not in allowlist' };
     return shell.openExternal(url)

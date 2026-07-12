@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const {
   INTERFACE_COLOR_KEYS,
+  THEME_CODE_VERSION,
   THEME_VAR_MAP,
   DEFAULT_THEME,
   THEME_PRESETS,
@@ -14,6 +15,8 @@ const {
   normalizeHex,
   normalizeOverrides,
   mergeThemeColors,
+  encodeThemeCode,
+  decodeThemeCode,
   hexToRgbTriplet,
   isLightHex,
   themeCssVarEntries,
@@ -132,6 +135,37 @@ test('mergeThemeColors layers valid overrides on defaults', () => {
   assert.equal(merged.accent, '#111111');
   assert.equal(merged.text, DEFAULT_THEME.text); // invalid override ignored
   assert.equal(merged.muted, DEFAULT_THEME.muted); // absent key falls back
+});
+
+test('TM1 theme codes round-trip the four interface colours in a stable order', () => {
+  assert.equal(THEME_CODE_VERSION, 'TM1');
+  const code = encodeThemeCode({
+    accent: '#112233',
+    bg: '#445566',
+    text: '#AABBCC',
+    muted: '#778899'
+  });
+  assert.equal(code, 'TM1-112233-445566-AABBCC-778899');
+  assert.deepEqual(decodeThemeCode(code), {
+    ok: true,
+    code,
+    colors: {
+      accent: '#112233',
+      bg: '#445566',
+      text: '#aabbcc',
+      muted: '#778899'
+    }
+  });
+});
+
+test('TM1 theme codes normalize input and reject malformed or future versions', () => {
+  assert.equal(
+    decodeThemeCode('  tm1-b7ead4-303438-eef5fb-a3adbb  ').code,
+    'TM1-B7EAD4-303438-EEF5FB-A3ADBB'
+  );
+  assert.deepEqual(decodeThemeCode('TM1-not-a-theme'), { ok: false, reason: 'invalid' });
+  assert.deepEqual(decodeThemeCode('TM2-B7EAD4-303438-EEF5FB-A3ADBB'), { ok: false, reason: 'unsupportedVersion' });
+  assert.deepEqual(decodeThemeCode(''), { ok: false, reason: 'invalid' });
 });
 
 test('mergeVendorColors overrides brand defaults, ignoring junk', () => {

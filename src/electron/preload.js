@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
     return () => ipcRenderer.removeListener('tokscale:push', listener);
   },
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
+  copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   openUserData: () => ipcRenderer.invoke('app:openUserData'),
   mimo: {
