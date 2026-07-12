@@ -230,12 +230,20 @@ test('theme code feedback clears when the displayed code changes', () => {
   const app = readRendererFile('app.js');
   const build = functionBody(app, 'buildAppearanceColorControls', 'renderThemePresetChips');
   const clear = functionBody(app, 'clearThemeCodeStatus', 'applyThemeCodeFromInput');
+  const invalidate = functionBody(app, 'invalidateThemeCodeFeedback', 'themeCodeFeedbackIsCurrent');
+  const apply = functionBody(app, 'applyThemeCodeFromInput', 'copyCurrentThemeCode');
+  const copy = functionBody(app, 'copyCurrentThemeCode', 'previewVendorColor');
 
   assert.match(build, /themeCodeInput\.value !== code/);
-  assert.match(build, /clearThemeCodeStatus\(\)/);
+  assert.match(build, /invalidateThemeCodeFeedback\(\)/);
   assert.match(clear, /themeCodeStatus\.textContent = ''/);
   assert.match(clear, /classList\.remove\('success', 'error'\)/);
-  assert.match(app, /themeCodeInput\?\.addEventListener\('input', clearThemeCodeStatus\)/);
+  assert.match(invalidate, /themeCodeFeedbackGeneration \+= 1/);
+  assert.match(app, /themeCodeInput\?\.addEventListener\('input', invalidateThemeCodeFeedback\)/);
+  assert.match(apply, /const generation = invalidateThemeCodeFeedback\(\)/);
+  assert.match(apply, /themeCodeFeedbackIsCurrent\(generation, parsed\.code\)/);
+  assert.match(copy, /const generation = invalidateThemeCodeFeedback\(\)/);
+  assert.match(copy, /themeCodeFeedbackIsCurrent\(generation, code\)/);
 });
 
 test('Trends has a master toggle separate from main-screen visibility', () => {

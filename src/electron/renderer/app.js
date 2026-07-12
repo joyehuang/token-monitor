@@ -3680,6 +3680,7 @@ function applyAppearanceSettings(settings) {
 }
 
 const themePresetsApi = window.TokenMonitorThemePresets;
+let themeCodeFeedbackGeneration = 0;
 // Snapshot of the canonical brand colours, taken before any override is
 // applied. clientColors is mutated in place (other modules hold the same
 // reference), so this is the source of truth for "reset to brand".
@@ -3734,7 +3735,7 @@ function buildAppearanceColorControls() {
     const code = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
     if (els.themeCodeInput.value !== code) {
       els.themeCodeInput.value = code;
-      clearThemeCodeStatus();
+      invalidateThemeCodeFeedback();
     }
   }
 }
@@ -3874,7 +3875,18 @@ function clearThemeCodeStatus() {
   els.themeCodeStatus.classList.remove('success', 'error');
 }
 
+function invalidateThemeCodeFeedback() {
+  themeCodeFeedbackGeneration += 1;
+  clearThemeCodeStatus();
+  return themeCodeFeedbackGeneration;
+}
+
+function themeCodeFeedbackIsCurrent(generation, code) {
+  return generation === themeCodeFeedbackGeneration && els.themeCodeInput?.value === code;
+}
+
 async function applyThemeCodeFromInput() {
+  const generation = invalidateThemeCodeFeedback();
   const parsed = themePresetsApi.decodeThemeCode(els.themeCodeInput?.value);
   if (!parsed.ok) {
     const key = parsed.reason === 'unsupportedVersion'
@@ -3885,13 +3897,17 @@ async function applyThemeCodeFromInput() {
   }
   els.themeCodeInput.value = parsed.code;
   await commitThemeColors(parsed.colors);
-  showThemeCodeStatus('settings.appearance.themeCodeApplied', 'success');
+  if (themeCodeFeedbackIsCurrent(generation, parsed.code)) {
+    showThemeCodeStatus('settings.appearance.themeCodeApplied', 'success');
+  }
 }
 
 async function copyCurrentThemeCode() {
+  const generation = invalidateThemeCodeFeedback();
   const code = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
   els.themeCodeInput.value = code;
   const copied = await copyToClipboard(code);
+  if (!themeCodeFeedbackIsCurrent(generation, code)) return;
   showThemeCodeStatus(
     copied ? 'settings.appearance.themeCodeCopied' : 'settings.appearance.themeCodeCopyFailed',
     copied ? 'success' : 'error'
@@ -5920,7 +5936,7 @@ els.themeCodeInput?.addEventListener('keydown', (event) => {
   event.preventDefault();
   void applyThemeCodeFromInput();
 });
-els.themeCodeInput?.addEventListener('input', clearThemeCodeStatus);
+els.themeCodeInput?.addEventListener('input', invalidateThemeCodeFeedback);
 els.systemGlassInput.addEventListener('change', saveAppearanceFromControls);
 els.liveDotInput.addEventListener('change', saveAppearanceFromControls);
 els.toolIconsInput.addEventListener('change', saveAppearanceFromControls);
