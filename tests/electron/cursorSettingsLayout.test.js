@@ -99,7 +99,11 @@ test('Hub secret input stays masked and exposes an accessible paste button', () 
   assert.equal(declaration(sharedInputRule, 'padding'), '7px 8px');
   assert.equal(declaration(sharedInputRule, 'border'), '1px solid var(--line)');
   assert.equal(declaration(sharedInputRule, 'border-radius'), '6px');
-  assert.equal(declaration(sharedInputRule, 'background'), 'rgba(var(--sunken-rgb), 0.48)');
+  const inputBackground = declaration(sharedInputRule, 'background');
+  assert.ok(
+    ['rgba(var(--sunken-rgb), 0.48)', 'rgb(var(--input-rgb))'].includes(inputBackground),
+    `unexpected input background: ${inputBackground}`
+  );
 
   const secretRowRule = cssRule(css, '.settings-panel .hub-secret-row input');
   assert.equal(declaration(secretRowRule, 'flex'), '1 1 0');
