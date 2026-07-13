@@ -242,19 +242,24 @@
                 </div>
               </div>
               <div id="themePresetChips" class="theme-preset-chips"></div>
-              <div class="theme-code-share">
-                <label class="theme-code-label" for="themeCodeInput" data-i18n="settings.appearance.themeCodeLabel">Theme Code</label>
-                <div class="theme-code-row">
+              <div class="settings-field theme-code-field">
+                <label for="themeCodeInput" data-i18n="settings.appearance.themeCodeLabel">Theme Code</label>
+                <div class="hub-secret-row">
                   <input id="themeCodeInput" class="theme-code-input" type="text" maxlength="64" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TM1-..." data-i18n-placeholder="settings.appearance.themeCodePlaceholder" />
-                  <button id="applyThemeCodeButton" class="theme-code-action" type="button" data-i18n="settings.appearance.themeCodeApply">Apply</button>
-                  <button id="copyThemeCodeButton" class="theme-code-action" type="button" data-i18n="settings.appearance.themeCodeCopy">Copy current</button>
+                  <button id="copyThemeCodeButton" class="icon-button" type="button" title="Copy theme code" data-i18n-title="settings.appearance.themeCodeCopy" aria-label="Copy theme code" data-i18n-aria-label="settings.appearance.themeCodeCopy">⧉</button>
+                  <button id="applyThemeCodeButton" class="icon-button" type="button" title="Paste and apply" data-i18n-title="settings.appearance.themeCodeApply" aria-label="Paste and apply" data-i18n-aria-label="settings.appearance.themeCodeApply">⎘</button>
                 </div>
                 <p class="settings-note" data-i18n="settings.appearance.themeCodeNote">Shares interface colours only. Vendor colours and appearance preferences stay local.</p>
                 <p id="themeCodeStatus" class="theme-code-status" aria-live="polite"></p>
               </div>
-              <details id="themeAdvancedCustomization" class="theme-advanced-customization">
-                <summary data-i18n="settings.appearance.advanced">Advanced customization</summary>
-                <div class="theme-advanced-content">
+              <div id="themeAdvancedGroup" class="settings-group cursor-account-group theme-advanced-group">
+                <button id="themeAdvancedToggle" class="settings-group-header cursor-settings-toggle" type="button" aria-expanded="false" aria-controls="themeAdvancedDetails">
+                  <span data-i18n="settings.appearance.advanced">Advanced customization</span>
+                  <span class="cursor-settings-summary">
+                    <span class="cursor-disclosure-icon" aria-hidden="true"></span>
+                  </span>
+                </button>
+                <div id="themeAdvancedDetails" class="cursor-settings-details hidden">
                   <div id="themeColorGrid" class="color-picker-grid"></div>
                   <div class="settings-subgroup settings-vendor-color-group">
                     <div class="settings-note-row">
@@ -267,7 +272,7 @@
                     <div id="vendorColorList" class="vendor-color-list"></div>
                   </div>
                 </div>
-              </details>
+              </div>
             </div>
           </div>
         </div>

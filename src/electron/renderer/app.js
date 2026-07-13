@@ -266,6 +266,9 @@ Object.assign(els, {
   applyThemeCodeButton: document.getElementById('applyThemeCodeButton'),
   copyThemeCodeButton: document.getElementById('copyThemeCodeButton'),
   themeCodeStatus: document.getElementById('themeCodeStatus'),
+  themeAdvancedGroup: document.getElementById('themeAdvancedGroup'),
+  themeAdvancedToggle: document.getElementById('themeAdvancedToggle'),
+  themeAdvancedDetails: document.getElementById('themeAdvancedDetails'),
   vendorColorList: document.getElementById('vendorColorList'),
   resetThemeColorsButton: document.getElementById('resetThemeColorsButton'),
   resetVendorColorsButton: document.getElementById('resetVendorColorsButton'),
@@ -3902,6 +3905,19 @@ async function applyThemeCodeFromInput() {
   }
 }
 
+async function pasteAndApplyThemeCode() {
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (_) {
+    showThemeCodeStatus('settings.appearance.themeCodeCopyFailed', 'error');
+    return;
+  }
+  const trimmed = (text || '').trim();
+  if (trimmed && els.themeCodeInput) els.themeCodeInput.value = trimmed;
+  await applyThemeCodeFromInput();
+}
+
 async function copyCurrentThemeCode() {
   const generation = invalidateThemeCodeFeedback();
   const code = themePresetsApi.encodeThemeCode(state.settings?.themeColors);
@@ -5929,7 +5945,7 @@ els.blurInput.addEventListener('input', applyAppearanceFromControls);
 els.zoomInput.addEventListener('input', applyAppearanceFromControls);
 els.resetThemeColorsButton?.addEventListener('click', () => commitThemeColors({}));
 els.resetVendorColorsButton?.addEventListener('click', () => commitVendorColors({}));
-els.applyThemeCodeButton?.addEventListener('click', () => { void applyThemeCodeFromInput(); });
+els.applyThemeCodeButton?.addEventListener('click', () => { void pasteAndApplyThemeCode(); });
 els.copyThemeCodeButton?.addEventListener('click', () => { void copyCurrentThemeCode(); });
 els.themeCodeInput?.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter') return;
@@ -5937,6 +5953,12 @@ els.themeCodeInput?.addEventListener('keydown', (event) => {
   void applyThemeCodeFromInput();
 });
 els.themeCodeInput?.addEventListener('input', invalidateThemeCodeFeedback);
+els.themeAdvancedToggle?.addEventListener('click', () => {
+  const open = els.themeAdvancedDetails?.classList.contains('hidden');
+  els.themeAdvancedToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  els.themeAdvancedDetails?.classList.toggle('hidden', !open);
+  els.themeAdvancedGroup?.classList.toggle('expanded', Boolean(open));
+});
 els.systemGlassInput.addEventListener('change', saveAppearanceFromControls);
 els.liveDotInput.addEventListener('change', saveAppearanceFromControls);
 els.toolIconsInput.addEventListener('change', saveAppearanceFromControls);
