@@ -3906,15 +3906,19 @@ async function applyThemeCodeFromInput() {
 }
 
 async function pasteAndApplyThemeCode() {
+  const generation = invalidateThemeCodeFeedback();
+  const code = els.themeCodeInput?.value;
   let text;
   try {
     text = await navigator.clipboard.readText();
   } catch (_) {
+    if (!themeCodeFeedbackIsCurrent(generation, code)) return;
     showThemeCodeStatus('settings.appearance.themeCodeCopyFailed', 'error');
     return;
   }
+  if (!themeCodeFeedbackIsCurrent(generation, code)) return;
   const trimmed = (text || '').trim();
-  if (trimmed && els.themeCodeInput) els.themeCodeInput.value = trimmed;
+  if (els.themeCodeInput) els.themeCodeInput.value = trimmed;
   await applyThemeCodeFromInput();
 }
 

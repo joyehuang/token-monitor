@@ -233,6 +233,7 @@ test('theme code feedback clears when the displayed code changes', () => {
   const clear = functionBody(app, 'clearThemeCodeStatus', 'applyThemeCodeFromInput');
   const invalidate = functionBody(app, 'invalidateThemeCodeFeedback', 'themeCodeFeedbackIsCurrent');
   const apply = functionBody(app, 'applyThemeCodeFromInput', 'copyCurrentThemeCode');
+  const paste = functionBody(app, 'pasteAndApplyThemeCode', 'copyCurrentThemeCode');
   const copy = functionBody(app, 'copyCurrentThemeCode', 'previewVendorColor');
 
   assert.match(build, /themeCodeInput\.value !== code/);
@@ -243,6 +244,10 @@ test('theme code feedback clears when the displayed code changes', () => {
   assert.match(app, /themeCodeInput\?\.addEventListener\('input', invalidateThemeCodeFeedback\)/);
   assert.match(apply, /const generation = invalidateThemeCodeFeedback\(\)/);
   assert.match(apply, /themeCodeFeedbackIsCurrent\(generation, parsed\.code\)/);
+  assert.match(paste, /const generation = invalidateThemeCodeFeedback\(\)/);
+  assert.match(paste, /const code = els\.themeCodeInput\?\.value/);
+  assert.equal((paste.match(/themeCodeFeedbackIsCurrent\(generation, code\)/g) || []).length, 2);
+  assert.match(paste, /if \(els\.themeCodeInput\) els\.themeCodeInput\.value = trimmed/);
   assert.match(copy, /const generation = invalidateThemeCodeFeedback\(\)/);
   assert.match(copy, /themeCodeFeedbackIsCurrent\(generation, code\)/);
 });
