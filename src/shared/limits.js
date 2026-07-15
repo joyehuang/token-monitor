@@ -357,7 +357,7 @@ function codexResetGeneration(provider) {
   return generation.size > 0 ? generation : null;
 }
 
-function compareCodexResetGeneration(first, second) {
+function compareCodexResetGeneration(first, second, nowMs) {
   const firstGeneration = codexResetGeneration(first);
   const secondGeneration = codexResetGeneration(second);
   if (!firstGeneration || !secondGeneration) return 0;
@@ -366,6 +366,7 @@ function compareCodexResetGeneration(first, second) {
   for (const [key, firstReset] of firstGeneration) {
     const secondReset = secondGeneration.get(key);
     if (!secondReset) continue;
+    if (firstReset <= nowMs && secondReset <= nowMs) continue;
     comparable += 1;
     const nextDirection = firstReset > secondReset ? 1 : (firstReset < secondReset ? -1 : 0);
     if (nextDirection && direction && nextDirection !== direction) return 0;
@@ -553,7 +554,7 @@ function pickBestProvider(candidates, nowMs) {
     // non-transitive. Remove every snapshot dominated by any newer comparable
     // generation, then apply quota pressure only to the remaining frontier.
     const generationFrontier = eligible.filter((candidate) => !eligible.some((other) => (
-      other !== candidate && compareCodexResetGeneration(other, candidate) > 0
+      other !== candidate && compareCodexResetGeneration(other, candidate, nowMs) > 0
     )));
     if (generationFrontier.length > 0) eligible = generationFrontier;
   }

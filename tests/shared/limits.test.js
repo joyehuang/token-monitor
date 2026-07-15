@@ -311,6 +311,38 @@ test('aggregateLimits advances an expired Codex session cycle while the weekly w
   assert.equal(aggregate.providers[0].windows[0].resetsAt, '2026-07-11T17:00:00.000Z');
 });
 
+test('aggregateLimits ignores conflicting Codex anchors that expired in both snapshots', () => {
+  const oldTight = codexProvider('sha256:codex-a', 'a@example.com', 10, '2026-07-11T12:20:00.000Z');
+  oldTight.windows[0].resetsAt = '2026-07-11T12:00:00.000Z';
+  oldTight.windows.push({
+    kind: 'weekly',
+    usedPercent: 90,
+    remainingPercent: 10,
+    resetsAt: '2026-07-18T20:00:00.000Z',
+    windowMinutes: 10_080
+  });
+  const newGeneration = codexProvider('sha256:codex-a', 'a@example.com', 90, '2026-07-11T12:22:00.000Z');
+  newGeneration.windows[0].resetsAt = '2026-07-11T11:00:00.000Z';
+  newGeneration.windows.push({
+    kind: 'weekly',
+    usedPercent: 10,
+    remainingPercent: 90,
+    resetsAt: '2026-07-19T20:00:00.000Z',
+    windowMinutes: 10_080
+  });
+  const devices = [
+    { deviceId: 'old', limits: { providers: [oldTight] } },
+    { deviceId: 'new', limits: { providers: [newGeneration] } }
+  ];
+
+  const forward = aggregateLimits(devices, 0, Date.parse('2026-07-11T13:00:00.000Z'));
+  const reversed = aggregateLimits([...devices].reverse(), 0, Date.parse('2026-07-11T13:00:00.000Z'));
+
+  assert.equal(forward.providers[0].sourceDeviceId, 'new');
+  assert.equal(forward.providers[0].windows[1].resetsAt, '2026-07-19T20:00:00.000Z');
+  assert.deepEqual(reversed.providers, forward.providers);
+});
+
 test('aggregateLimits breaks equal Codex snapshot ties by source device id', () => {
   const first = codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-07-11T12:20:00.000Z');
   const second = codexProvider('sha256:codex-a', 'a@example.com', 50, '2026-07-11T12:20:00.000Z');
