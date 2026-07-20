@@ -1619,12 +1619,13 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.1), 0 0 12px rgba(255, 99, 99, 0.14);
 }
 @media (prefers-reduced-motion: reduce) {
-  .refresh-button,
-  .refresh-button-icon {
+  :root:not([data-reduce-motion="off"]) .refresh-button,
+  :root:not([data-reduce-motion="off"]) .refresh-button-icon {
     transition-duration: 0.01ms;
   }
 }
 .tabs {
+  --period-index: 0;
   position: relative;
   z-index: 1;
   display: grid;
@@ -1639,10 +1640,25 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
+.tab-indicator {
+  position: absolute;
+  z-index: 0;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 10px) / 3);
+  border: 1px solid rgba(var(--line-rgb), 0.13);
+  border-radius: 6px;
+  background: rgba(var(--overlay-rgb), 0.06);
+  box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.075);
+  pointer-events: none;
+  transform: translate3d(calc(var(--period-index) * (100% + 2px)), 0, 0);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
 .tab {
-  height: 24px;
-  min-width: 0;
-  padding-inline: 3px;
+  position: relative;
+  z-index: 1;
+  height: 22px;
   border-color: transparent;
   border-radius: 6px;
   background: transparent;
@@ -1653,10 +1669,10 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 }
 .tab:hover { color: var(--text); }
 .tab.active {
-  border-color: rgba(var(--line-rgb), 0.13);
+  border-color: transparent;
   color: var(--green);
-  background: rgba(var(--overlay-rgb), 0.06);
-  box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.075);
+  background: transparent;
+  box-shadow: none;
 }
 .total-panel {
   position: relative;
@@ -1684,6 +1700,9 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   font-weight: 500;
   font-size: clamp(30px, 11vw, 46px);
   line-height: 1.05;
+  /* Equal-width digits so the counting animation does not wobble the number's
+     width (and shove the compact chip) frame to frame. */
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1692,7 +1711,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   flex: 0 0 auto;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 .total-compact.hidden { display: none; }
@@ -2351,8 +2370,16 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .row-metrics { display: grid; flex: 0 0 auto; gap: 2px; min-width: max-content; text-align: right; }
 .row-value { color: var(--text); white-space: nowrap; }
 .row-cost { color: var(--muted); font-size: 10px; white-space: nowrap; }
-.bar { width: 100%; height: 6px; overflow: hidden; border-radius: 3px; background: rgb(var(--sunken-rgb)); box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.04); }
-.bar-fill { height: 100%; width: 0; border-radius: 3px; background: var(--blue); transition: width 450ms ease; }
+.bar { width: 100%; height: 6px; overflow: hidden; border-radius: 3px; background: rgba(var(--sunken-rgb), 0.46); box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.04); }
+.bar-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--blue);
+  transform: scaleX(var(--bar-scale, 0));
+  transform-origin: left center;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
 .row.stale .row-name, .row.stale .row-value, .row.stale .row-cost { color: var(--muted); }
 .home-device-badge,
 .row.local .row-name::after {
@@ -2614,7 +2641,22 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .limit-live-badge::before {
   content: "\2713\00a0";
   color: var(--green);
-  font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.16), inset 0 1px 0 rgba(var(--overlay-rgb), 0.1);
+}
+.limit-account-switch-button:disabled {
+  cursor: default;
+}
+.limit-account-switch-zone.is-error .limit-account-switch-button {
+  background: rgba(244, 119, 136, 0.14);
+  color: var(--red);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduce-motion="off"]) .limit-account-switch-zone .limit-name-title,
+  :root:not([data-reduce-motion="off"]) .limit-account-active-zone .limit-name-title,
+  :root:not([data-reduce-motion="off"]) .limit-account-active-popover,
+  :root:not([data-reduce-motion="off"]) .limit-account-switch-popover {
+    transition: none;
+  }
 }
 .limit-account-row {
   padding: 0;
@@ -2644,11 +2686,21 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   background: rgb(var(--sunken-rgb));
 }
 .limit-meter-fill {
-  width: 0;
+  width: 100%;
   height: 100%;
   border-radius: 3px;
-  transition: width 420ms ease;
+  transform: scaleX(var(--bar-scale, 0));
+  transform-origin: left center;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduce-motion="off"]) .bar-fill,
+  :root:not([data-reduce-motion="off"]) .limit-meter-fill,
+  :root:not([data-reduce-motion="off"]) .tab-indicator {
+    transition: none;
+  }
+}
+
 .limit-reset {
   min-height: 11px;
   overflow: hidden;
@@ -2800,7 +2852,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
-  .limit-reset-credits-tooltip {
+  :root:not([data-reduce-motion="off"]) .limit-reset-credits-tooltip {
     transition: none;
   }
 }
@@ -3009,7 +3061,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
-  .view-switcher-menu {
+  :root:not([data-reduce-motion="off"]) .view-switcher-menu {
     filter: none;
     transition-duration: 0.01ms;
   }
@@ -3069,6 +3121,96 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   cursor: pointer;
 }
 .update-pill-dismiss:hover { opacity: 1; }
+.update-pill-dismiss.hidden { display: none; }
+.app-update-popover {
+  inset: auto;
+  margin: 0;
+  max-height: min(360px, calc(100vh - 64px));
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba(var(--line-rgb), 0.22);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.075), rgba(var(--overlay-rgb), 0.025)),
+    rgba(var(--glass-rgb), 0.76);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(var(--overlay-rgb), 0.1);
+  -webkit-backdrop-filter: blur(28px) saturate(115%);
+  backdrop-filter: blur(28px) saturate(115%);
+  color: var(--muted);
+  font-size: 10px;
+  opacity: 0;
+  transform: translateY(5px) scale(0.985);
+  transition: opacity 140ms ease, transform 140ms cubic-bezier(0.22, 1, 0.36, 1), overlay 140ms allow-discrete, display 140ms allow-discrete;
+}
+.app-update-popover:popover-open { opacity: 1; transform: none; }
+@starting-style {
+  .app-update-popover:popover-open { opacity: 0; transform: translateY(5px) scale(0.985); }
+}
+.app-update-popover::backdrop { background: transparent; }
+.app-update-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.app-update-popover-header strong { color: var(--text); font-size: 11px; line-height: 1.35; }
+.app-update-popover-close {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+.app-update-popover-close:hover { background: rgba(var(--overlay-rgb), 0.07); color: var(--text); }
+.app-update-popover button:focus-visible {
+  outline: 1px solid rgba(115, 189, 245, 0.72);
+  outline-offset: 2px;
+}
+.app-update-popover .app-update-notes-body { max-height: 230px; overflow: auto; }
+.app-update-popover-actions { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
+.app-update-popover-primary {
+  min-height: 27px;
+  padding: 0 10px;
+  border: 1px solid rgba(115, 189, 245, 0.46);
+  border-radius: 6px;
+  background: rgba(115, 189, 245, 0.14);
+  color: var(--blue);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+.app-update-popover-primary:hover { background: rgba(115, 189, 245, 0.22); }
+.app-update-popover-primary:disabled { cursor: default; opacity: 0.5; }
+.app-update-popover .inline-link { font-size: 10px; }
+.app-update-popover .inline-link.hidden { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduce-motion="off"]) .app-update-popover { transition-duration: 0.01ms; }
+
+  :root:not([data-reduce-motion="off"]) *,
+  :root:not([data-reduce-motion="off"]) *::before,
+  :root:not([data-reduce-motion="off"]) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:root[data-reduce-motion="on"] *,
+:root[data-reduce-motion="on"] *::before,
+:root[data-reduce-motion="on"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-delay: 0s !important;
+  transition-duration: 0.01ms !important;
+}
 
 /* Progressive collapse as the window gets shorter. Width is intentionally not a */
 /* trigger — a narrow but tall window is a valid sidebar layout. Sections drop */
@@ -3295,7 +3437,12 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .trends-spark { flex: 1 1 auto; min-height: 0; display: flex; cursor: pointer; border-radius: 8px; padding: 6px 4px; transition: background 0.12s ease; }
 .trends-spark:hover { background: rgba(var(--overlay-rgb), 0.05); }
 .trends-spark .sparkline { width: 100%; height: 100%; display: block; }
-.trends-spark .spark-bar { fill: #6ab4f0; opacity: 0.5; }
+.trends-spark .spark-bar {
+  fill: #6ab4f0;
+  opacity: 0.5;
+  transform-box: fill-box;
+  transform-origin: bottom center;
+}
 .trends-spark .spark-bar--last { opacity: 1; }
 .trends-axis { flex: none; display: flex; justify-content: space-between; padding: 0 4px; font-size: 10px; opacity: 0.45; font-variant-numeric: tabular-nums; }
 .trends-stats { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

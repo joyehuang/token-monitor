@@ -16,6 +16,7 @@
         </div>
         <div class="title-controls">
           <nav class="tabs" aria-label="Period tabs">
+            <span class="tab-indicator" aria-hidden="true"></span>
             <button class="tab active" data-period="today">DAY</button>
             <button class="tab" data-period="week">WEEK</button>
             <button class="tab" data-period="month">MONTH</button>
@@ -227,10 +228,19 @@
               <label class="checkbox-label"><input id="liveDotInput" type="checkbox" /><span data-i18n="settings.appearance.liveIndicator">Live Indicator</span></label>
               <label class="checkbox-label"><input id="toolIconsInput" type="checkbox" /><span data-i18n="settings.appearance.toolIcons">Tool Icons</span></label>
               <label class="checkbox-label"><input id="titleIconInput" type="checkbox" /><span data-i18n="settings.appearance.titleIcon">Use Title Icon</span></label>
+              <label class="checkbox-label"><input id="showCompactTotalTokensInput" type="checkbox" /><span data-i18n="settings.appearance.compactTotalTokens">Show compact token total</span></label>
               <label class="checkbox-label"><input id="settingsInTitlebarInput" type="checkbox" /><span data-i18n="settings.appearance.settingsInTitlebar">Settings button in title bar</span></label>
               <label><span class="slider-label"><span data-i18n="settings.appearance.glass">Glass</span><button id="resetGlassButton" type="button" class="reset-appearance-button reset-inline" title="Reset glass" data-i18n-title="settings.appearance.resetGlass">↺</button></span><input id="glassInput" type="range" min="0" max="100" step="1" /></label>
               <label><span class="slider-label"><span data-i18n="settings.appearance.depth">Depth</span><button id="resetDepthButton" type="button" class="reset-appearance-button reset-inline" title="Reset depth" data-i18n-title="settings.appearance.resetDepth">↺</button></span><input id="blurInput" type="range" min="0" max="100" step="1" /></label>
               <label><span class="slider-label"><span data-i18n="settings.appearance.zoom">Zoom</span><button id="resetZoomButton" type="button" class="reset-appearance-button reset-inline" title="Reset zoom" data-i18n-title="settings.appearance.resetZoom">↺</button></span><input id="zoomInput" type="range" min="70" max="160" step="5" /></label>
+              <label><span data-i18n="settings.appearance.reduceMotion">Reduce Motion</span>
+                <select id="reduceMotionInput">
+                  <option value="system" data-i18n="settings.appearance.motion.system">System</option>
+                  <option value="on" data-i18n="settings.appearance.motion.on">On</option>
+                  <option value="off" data-i18n="settings.appearance.motion.off">Off</option>
+                </select>
+              </label>
+              <p class="settings-note" data-i18n="settings.appearance.reduceMotionNote">Reduce animations, or follow the system setting.</p>
             </div>
             <div class="settings-subgroup settings-theme-group">
               <div class="settings-note-row">
@@ -644,7 +654,7 @@
 
       <section class="total-panel">
         <div class="label-row"><span>TOTAL TOKENS</span></div>
-        <div class="total-number-row"><div id="totalTokens" class="total-number">0</div><div id="totalTokensCompact" class="total-compact hidden"></div></div>
+        <div class="total-number-row"><div id="totalTokens" class="total-number">0</div><div id="totalTokensCompact" class="total-compact hidden" aria-hidden="true"></div></div>
         <div id="cost" class="cost">$0.00</div>
       </section>
 
@@ -691,6 +701,7 @@
     <script src="../windowShortcut.js"></script>
     <script src="../../shared/currency.js"></script>
     <script src="../../shared/trayText.js"></script>
+    <script src="../motionPreference.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

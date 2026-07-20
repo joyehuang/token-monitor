@@ -2,6 +2,8 @@
 
 const clientLabels = { claude: 'Claude Code', codex: 'Codex', hermes: 'Hermes', gemini: 'Gemini', cursor: 'Cursor', opencode: 'OpenCode', openclaw: 'OpenClaw', antigravity: 'Antigravity', cline: 'Cline', kimi: 'Kimi', qwen: 'Qwen', grok: 'Grok Build', copilot: 'GitHub Copilot', pi: 'Pi', zed: 'Zed', kilocode: 'Kilo Code', micode: 'MiMo Code', zcode: 'ZCode', kiro: 'Kiro', codebuddy: 'CodeBuddy', workbuddy: 'WorkBuddy' };
 const { clientColors, fallbackModelColors, modelVendorFor, modelColor } = window.TokenMonitorUsageCharts;
+const motionPreferenceApi = window.TokenMonitorMotionPreference;
+const reducedMotionMedia = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 const clientsWithIcon = new Set([
   'claude', 'codex', 'gemini', 'cursor', 'opencode', 'openclaw', 'hermes', 'antigravity', 'cline', 'kimi', 'qwen', 'grok', 'copilot', 'pi', 'zed', 'kilocode', 'micode', 'zcode', 'kiro', 'codebuddy', 'workbuddy',
   'xai', 'deepseek', 'meta', 'mistral', 'qwen', 'moonshot', 'zai', 'cohere', 'xiaomi', 'minimax'
@@ -181,15 +183,20 @@ function normalizeInitialViewValue(value, allowed, fallback) {
   return allowed.has(raw) ? raw : fallback;
 }
 
-const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+const state = { period: normalizeInitialViewValue(initialViewState.period, viewPeriodValues, 'today'), appUpdate: null, breakdown: normalizeInitialViewValue(initialViewState.breakdown, viewBreakdownValues, 'home'), viewSwitcherOpen: false, viewSwitcherHasOpened: false, resetCreditsTooltipHasOpened: false, resetCreditsTooltipActive: false, resetCreditsTooltipRenderPending: false, settings: null, stats: null, homeHistory: null, homeHistoryBusy: false, homeHistoryRequested: false, homeHistoryPreviewKey: '', homeActivityScrollLeft: null, homeActivityFollowEnd: true, homeActivityResizeObserver: null, serviceStatus: null, serviceStatusBusy: false, serviceProvidersExpanded: false, trendSettingsExpanded: false, trendsActivating: false, homeSettingsExpanded: false, homeLimitSettingsExpanded: false, serviceStatusTicker: null, refreshTimer: null, refreshBusy: false, refreshFeedbackTimer: null, currentTotal: 0, rowSignature: '', streamConnected: false, streamFailure: null, mode: 'idle', appInfo: null, tokscaleStatus: null, tokscaleCheck: null, tokscaleBusy: false, hubInfo: null, cursorAccount: { status: null, error: '' }, cursorAccountExpanded: false, codexAccountExpanded: false, codexAccountError: '', codexSignInBusy: false, codexSignInFlowId: '', codexLoginUrl: '', codexLoginStatus: '', codexLoginOutput: '', codexActiveAccount: null, codexPendingActiveAccount: null, codexPendingActiveAccountUntil: 0, codexPendingActiveAccountTimer: null, codexSystemSwitchingAccountId: '', codexSystemSwitchErrorAccountId: '', codexSystemSwitchError: '', codexSwitchPopoverHasOpened: false, codexSwitchPopoverActive: false, codexSwitchPopoverRenderPending: false, customPricingExpanded: false, opencodeProfileCount: 0, opencodeCookieExpanded: false, deepseekAccountExpanded: false, deepseekPendingCheckSince: 0, minimaxAccountExpanded: false, minimaxPendingCheckSince: 0, zaiAccountExpanded: false, zaiPendingCheckSince: 0, zaiteamAccountExpanded: false, zaiteamPendingCheckSince: 0, volcengineAccountExpanded: false, volcenginePendingCheckSince: 0, qoderAccountExpanded: false, qoderPendingCheckSince: 0, kimiAccountExpanded: false, kimiPendingCheckSince: 0, ollamaAccountExpanded: false, ollamaPendingCheckSince: 0, mimoAccountExpanded: false, mimoAccountError: '', copilotAccountExpanded: false, copilotManualExpanded: false, copilotPendingCheckSince: 0, copilotSignInBusy: false, copilotSignInCancelable: false, copilotSignInFlowId: '', copilotAuthorizeMessage: '', copilotLoginStatus: '', copilotErrorMessage: '', floatingBubble: initialFloatingBubble, suppressInitialNumberAnimation: window.__TOKEN_MONITOR_SUPPRESS_INITIAL_NUMBER_ANIMATION__ === true, openSession: null, detailSort: 'time', recordingWindowShortcut: false, windowShortcutInvalid: false };
+state.appUpdateNotesPresentedVersion = '';
+state.periodMotionActive = false;
+state.animateBarsFromZero = false;
+state.animateChartsOnRender = true;
+state.projectSettingsExpanded = false;
 state.settingsSections = Object.fromEntries(SETTINGS_SECTION_IDS.map((id) => [id, false]));
-const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: true, settingsInTitlebar: false };
+const defaultAppearance = { glassOpacity: 68, glassBlur: 32, zoomFactor: 1, systemGlass: true, showLiveDot: true, showToolIcons: true, titleIconOnly: true, showCompactTotalTokens: false, settingsInTitlebar: false };
 let preferenceDrag = null;
 let viewSwitcherLongPressTimer = null;
 let viewSwitcherLongPressTriggered = false;
 let viewSwitcherHoverCloseTimer = null;
 const els = {
-  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), themeToggleButton: document.getElementById('themeToggleButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), showActiveAccountInput: document.getElementById('showActiveAccountInput'), showLimitUsedInput: document.getElementById('showLimitUsedInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutRecordButton: document.getElementById('windowToggleShortcutRecordButton'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
+  shell: document.querySelector('.shell'), status: document.getElementById('status'), liveDot: document.getElementById('liveDot'), totalTokens: document.getElementById('totalTokens'), totalTokensCompact: document.getElementById('totalTokensCompact'), cost: document.getElementById('cost'), homePanel: document.getElementById('homePanel'), breakdown: document.getElementById('breakdown'), serviceStatusPanel: document.getElementById('serviceStatusPanel'), limitsPanel: document.getElementById('limitsPanel'), trendsPanel: document.getElementById('trendsPanel'), viewSwitcher: document.getElementById('viewSwitcher'), pinButton: document.getElementById('pinButton'), settingsButton: document.getElementById('settingsButton'), settingsPanel: document.getElementById('settingsPanel'), languageInput: document.getElementById('languageInput'), currencyInput: document.getElementById('currencyInput'), currencyRateRow: document.getElementById('currencyRateRow'), currencyRateModeAuto: document.getElementById('currencyRateModeAuto'), currencyRateModeManual: document.getElementById('currencyRateModeManual'), currencyRateManualField: document.getElementById('currencyRateManualField'), currencyRateOverrideInput: document.getElementById('currencyRateOverrideInput'), currencyRateStatus: document.getElementById('currencyRateStatus'), hubUrlInput: document.getElementById('hubUrlInput'), secretInput: document.getElementById('secretInput'), deviceIdInput: document.getElementById('deviceIdInput'), limitProviderCheckboxes: document.getElementById('limitProviderCheckboxes'), limitsRefreshInput: document.getElementById('limitsRefreshInput'), showLimitSourceInput: document.getElementById('showLimitSourceInput'), maskLimitAccountEmailsInput: document.getElementById('maskLimitAccountEmailsInput'), showLimitUsedInput: document.getElementById('showLimitUsedInput'), systemGlassInput: document.getElementById('systemGlassInput'), liveDotInput: document.getElementById('liveDotInput'), toolIconsInput: document.getElementById('toolIconsInput'), floatingBubbleInput: document.getElementById('floatingBubbleInput'), floatingBubbleTriggerInput: document.getElementById('floatingBubbleTriggerInput'), floatingBubbleTriggerRow: document.getElementById('floatingBubbleTriggerRow'), floatingBubbleContentInput: document.getElementById('floatingBubbleContentInput'), floatingBubbleContentRow: document.getElementById('floatingBubbleContentRow'), floatingBubbleContent: document.getElementById('floatingBubbleContent'), discordRpcInput: document.getElementById('discordRpcInput'), windowBehaviorInput: document.getElementById('windowBehaviorInput'), showTrayIconInput: document.getElementById('showTrayIconInput'), trayModeInput: document.getElementById('trayModeInput'), trayContentInput: document.getElementById('trayContentInput'), windowToggleShortcutValue: document.getElementById('windowToggleShortcutValue'), windowToggleShortcutRecordButton: document.getElementById('windowToggleShortcutRecordButton'), windowToggleShortcutClearButton: document.getElementById('windowToggleShortcutClearButton'), windowToggleShortcutNote: document.getElementById('windowToggleShortcutNote'), glassInput: document.getElementById('glassInput'), blurInput: document.getElementById('blurInput'), zoomInput: document.getElementById('zoomInput'), resetGlassButton: document.getElementById('resetGlassButton'), resetDepthButton: document.getElementById('resetDepthButton'), resetZoomButton: document.getElementById('resetZoomButton'), saveSettingsButton: document.getElementById('saveSettingsButton'), clientDisplayList: document.getElementById('clientDisplayList'), wslScanInput: document.getElementById('wslScanInput'), wslScanRow: document.getElementById('wslScanRow'), wslPanel: document.getElementById('wslPanel'), openConfigButton: document.getElementById('openConfigButton'), exportAutoInput: document.getElementById('exportAutoInput'), exportAutoDetails: document.getElementById('exportAutoDetails'), exportAutoStatus: document.getElementById('exportAutoStatus'), exportDirLabel: document.getElementById('exportDirLabel'), exportPickDirButton: document.getElementById('exportPickDirButton'), exportIntervalInput: document.getElementById('exportIntervalInput'), exportNowButton: document.getElementById('exportNowButton'), refreshButton: document.getElementById('refreshButton'), minButton: document.getElementById('minButton'), closeButton: document.getElementById('closeButton'), floatingBubbleTab: document.getElementById('floatingBubbleTab')
 };
 Object.assign(els, {
   floatingBubbleOptions: document.getElementById('floatingBubbleOptions'),
@@ -208,6 +215,10 @@ Object.assign(els, {
   hubAddressList: document.getElementById('hubAddressList'),
   collectionCadenceInput: document.getElementById('collectionCadenceInput'),
   collectionCadenceNote: document.getElementById('collectionCadenceNote'),
+  sessionUsageArchiveInput: document.getElementById('sessionUsageArchiveInput'),
+  sessionUsageArchiveStatus: document.getElementById('sessionUsageArchiveStatus'),
+  reduceMotionInput: document.getElementById('reduceMotionInput'),
+  clearSessionUsageArchiveButton: document.getElementById('clearSessionUsageArchiveButton'),
   startupGroup: document.getElementById('startupGroup'),
   startAtLoginInput: document.getElementById('startAtLoginInput'),
   startupNote: document.getElementById('startupNote'),
@@ -231,6 +242,7 @@ Object.assign(els, {
   appUpdateViewReleaseButton: document.getElementById('appUpdateViewReleaseButton'),
   appUpdateMessage: document.getElementById('appUpdateMessage'),
   titleIconInput: document.getElementById('titleIconInput'),
+  showCompactTotalTokensInput: document.getElementById('showCompactTotalTokensInput'),
   settingsInTitlebarInput: document.getElementById('settingsInTitlebarInput'),
   resetClientDisplayOrderButton: document.getElementById('resetClientDisplayOrderButton'),
   showAllClientsButton: document.getElementById('showAllClientsButton'),
@@ -342,12 +354,65 @@ function setSettingsSectionExpanded(section, expanded) {
   applySettingsSectionDom(id, next);
 }
 
+// Expanding a section auto-collapses the previously open one. When that one
+// sits ABOVE the clicked header, the content above shrinks while scrollTop
+// stays put, so the clicked card visually flies upward. Pin the clicked
+// header to its on-screen position for the duration of the 250ms accordion
+// transition (rAF-corrected each frame; a single pass when motion is off).
+const SETTINGS_SCROLL_ANCHOR_MS = 360;
+const SETTINGS_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Tab']);
+let settingsScrollAnchorFrame = null;
+
+function cancelSettingsScrollAnchor() {
+  if (settingsScrollAnchorFrame === null) return;
+  cancelAnimationFrame(settingsScrollAnchorFrame);
+  settingsScrollAnchorFrame = null;
+}
+
+function cancelSettingsScrollAnchorOnKeydown(event) {
+  if (SETTINGS_SCROLL_KEYS.has(event.key)) cancelSettingsScrollAnchor();
+}
+
+function shouldAnchorSettingsScroll(section, expanding) {
+  if (!expanding) return false;
+  const sectionIndex = SETTINGS_SECTION_IDS.indexOf(section);
+  return SETTINGS_SECTION_IDS.slice(0, sectionIndex).some(id => state.settingsSections[id]);
+}
+
+function anchorSettingsScroll(anchorEl, mutate) {
+  cancelSettingsScrollAnchor();
+  const panel = els.settingsPanel;
+  if (!panel || !anchorEl) { mutate(); return; }
+  const offset = anchorEl.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+  mutate();
+  const reducedMotion = prefersReducedMotion();
+  const deadline = performance.now() + SETTINGS_SCROLL_ANCHOR_MS;
+  const pin = () => {
+    settingsScrollAnchorFrame = null;
+    if (!anchorEl.isConnected || panel.classList.contains('hidden')) return;
+    const drift = anchorEl.getBoundingClientRect().top - panel.getBoundingClientRect().top - offset;
+    if (Math.abs(drift) > 0.5) panel.scrollTop += drift;
+    if (!reducedMotion && performance.now() < deadline) {
+      settingsScrollAnchorFrame = requestAnimationFrame(pin);
+    }
+  };
+  settingsScrollAnchorFrame = requestAnimationFrame(pin);
+}
+
 function setupSettingsSections() {
   for (const toggle of document.querySelectorAll('[data-settings-section]')) {
     const section = toggle.dataset.settingsSection;
-    toggle.addEventListener('click', () => setSettingsSectionExpanded(section, !state.settingsSections[section]));
+    toggle.addEventListener('click', () => {
+      const expanding = !state.settingsSections[section];
+      const mutate = () => setSettingsSectionExpanded(section, expanding);
+      if (shouldAnchorSettingsScroll(section, expanding)) anchorSettingsScroll(toggle, mutate);
+      else { cancelSettingsScrollAnchor(); mutate(); }
+    });
     setSettingsSectionExpanded(section, state.settingsSections[section]);
   }
+  els.settingsPanel?.addEventListener('pointerdown', cancelSettingsScrollAnchor, { passive: true });
+  els.settingsPanel?.addEventListener('wheel', cancelSettingsScrollAnchor, { passive: true });
+  els.settingsPanel?.addEventListener('keydown', cancelSettingsScrollAnchorOnKeydown);
 }
 
 function refreshIntervalLabel(value) {
@@ -426,25 +491,54 @@ function formatNumber(value) { return Math.round(Number(value || 0)).toLocaleStr
 function formatCompact(value) {
   const num = Math.round(Number(value || 0));
   const abs = Math.abs(num);
-  if (abs >= 1e9) return `${(num / 1e9).toFixed(1).replace(/\.0$/, '')}B`;
-  if (abs >= 1e6) return `${(num / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
-  if (abs >= 1e3) return `${(num / 1e3).toFixed(1).replace(/\.0$/, '')}K`;
-  return String(num);
+  const units = [
+    { divisor: 1e3, suffix: 'K' },
+    { divisor: 1e6, suffix: 'M' },
+    { divisor: 1e9, suffix: 'B' }
+  ];
+  let unitIndex = abs >= 1e9 ? 2 : abs >= 1e6 ? 1 : abs >= 1e3 ? 0 : -1;
+  if (unitIndex < 0) return String(num);
+
+  let unit = units[unitIndex];
+  let display = (num / unit.divisor).toFixed(1);
+  if (Math.abs(Number(display)) >= 1000 && unitIndex < units.length - 1) {
+    unit = units[unitIndex + 1];
+    display = (num / unit.divisor).toFixed(1);
+  }
+  return `${display.replace(/\.0$/, '')}${unit.suffix}`;
 }
 function updateTotalCompact(value) {
   if (!els.totalTokensCompact) return;
   const num = Math.round(Number(value || 0));
-  if (Math.abs(num) < 1000) {
+  if (state.settings?.showCompactTotalTokens !== true || Math.abs(num) < 1000) {
     hideTotalCompact();
-    return;
+  } else {
+    els.totalTokensCompact.textContent = `≈ ${formatCompact(num)}`;
+    els.totalTokensCompact.classList.remove('hidden');
   }
-  els.totalTokensCompact.textContent = `≈ ${formatCompact(num)}`;
-  els.totalTokensCompact.classList.remove('hidden');
+  fitTotalNumber();
 }
 function hideTotalCompact() {
   if (!els.totalTokensCompact) return;
   els.totalTokensCompact.textContent = '';
   els.totalTokensCompact.classList.add('hidden');
+}
+// Scale the exact total to fit the width it is actually given instead of clipping
+// it to an ellipsis. The compact chip (when shown) is flex:0 0 auto and claims its
+// width first, so the number's clientWidth is its allotted box while scrollWidth is
+// its natural width; the ratio is how far the font must shrink to stay whole.
+function totalNumberFontScale(availableWidth, naturalWidth, minScale = 0.5) {
+  if (!(naturalWidth > 0) || !(availableWidth > 0)) return 1;
+  return Math.min(1, Math.max(minScale, availableWidth / naturalWidth));
+}
+function fitTotalNumber() {
+  const el = els.totalTokens;
+  if (!el) return;
+  el.style.fontSize = '';
+  const base = parseFloat(getComputedStyle(el).fontSize);
+  if (!(base > 0)) return;
+  const scale = totalNumberFontScale(el.clientWidth, el.scrollWidth);
+  if (scale < 1) el.style.fontSize = `${Math.floor(base * scale)}px`;
 }
 function trendShortLabel(label, labelKey) {
   const value = String(label || '');
@@ -738,25 +832,281 @@ function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
 // frame and overwrites a later static update (e.g. switching to a zero period
 // mid-animation).
 let numberAnimHandle = 0;
+let numberAnimTarget = null;
+let numberAnimValue = 0;
 function cancelNumberAnimation() {
-  if (numberAnimHandle) { cancelAnimationFrame(numberAnimHandle); numberAnimHandle = 0; }
+  if (numberAnimHandle) cancelAnimationFrame(numberAnimHandle);
+  numberAnimHandle = 0;
+  numberAnimTarget = null;
+}
+
+function headlineNumberIsAnimatingTo(value) {
+  return Boolean(numberAnimHandle) && numberAnimTarget === value;
 }
 
 function animateNumber(el, from, to, duration = 2200, onDone = null) {
   cancelNumberAnimation();
+  if (prefersReducedMotion()) {
+    el.textContent = formatNumber(to);
+    numberAnimValue = to;
+    if (typeof onDone === 'function') onDone();
+    return;
+  }
   const start = performance.now();
   const delta = to - from;
+  numberAnimTarget = to;
+  numberAnimValue = from;
   function frame(now) {
     const progress = Math.min(1, (now - start) / duration);
-    el.textContent = formatNumber(from + delta * easeOutQuart(progress));
+    numberAnimValue = from + delta * easeOutQuart(progress);
+    el.textContent = formatNumber(numberAnimValue);
     if (progress < 1) {
       numberAnimHandle = requestAnimationFrame(frame);
     } else {
       numberAnimHandle = 0;
+      numberAnimTarget = null;
+      numberAnimValue = to;
       if (typeof onDone === 'function') onDone();
     }
   }
   numberAnimHandle = requestAnimationFrame(frame);
+}
+
+const rowNumberAnimations = new Map();
+const rowBarAnimations = new Map();
+
+function prefersReducedMotion() {
+  return motionPreferenceApi.shouldReduceMotion(state.settings?.reduceMotion, reducedMotionMedia?.matches);
+}
+
+function settleMotionAnimations() {
+  cancelNumberAnimation();
+  numberAnimValue = state.currentTotal;
+  els.totalTokens.textContent = formatNumber(state.currentTotal);
+  updateTotalCompact(state.currentTotal);
+  for (const [el, motion] of rowNumberAnimations) {
+    cancelAnimationFrame(motion.handle);
+    const target = Number(motion.target ?? el.dataset.motionTarget ?? el.dataset.motionValue ?? 0);
+    el.textContent = formatNumber(target);
+    el.dataset.motionValue = String(target);
+    delete el.dataset.motionTarget;
+  }
+  rowNumberAnimations.clear();
+  for (const animation of document.getAnimations?.() || []) {
+    try { animation.finish(); } catch (_) { animation.cancel(); }
+  }
+  rowBarAnimations.clear();
+}
+
+function applyReduceMotionPreference(value) {
+  const preference = motionPreferenceApi.normalize(value);
+  document.documentElement.dataset.reduceMotion = preference;
+  if (motionPreferenceApi.shouldReduceMotion(preference, reducedMotionMedia?.matches)) settleMotionAnimations();
+  return preference;
+}
+
+function captureBreakdownMotion() {
+  const snapshot = new Map();
+  for (const row of els.breakdown?.querySelectorAll('.row[data-key]') || []) {
+    const rect = row.getBoundingClientRect();
+    const fill = row.querySelector('.bar-fill');
+    const trackWidth = fill?.parentElement?.getBoundingClientRect().width || 0;
+    const fillWidth = fill?.getBoundingClientRect().width || 0;
+    snapshot.set(row.dataset.key, {
+      top: rect.top,
+      value: Number(row.querySelector('.row-value')?.dataset.motionValue || row.dataset.motionValue || 0),
+      barScale: trackWidth > 0 ? Math.max(0, Math.min(1, fillWidth / trackWidth)) : 0
+    });
+  }
+  return snapshot;
+}
+
+function animateRowNumber(el, from, to, duration = 420) {
+  const previous = rowNumberAnimations.get(el);
+  if (previous?.target === to) return;
+  if (previous) cancelAnimationFrame(previous.handle);
+  const startValue = Number.isFinite(previous?.value) ? previous.value : from;
+  if (!Number.isFinite(startValue) || !Number.isFinite(to) || startValue === to || prefersReducedMotion()) {
+    el.textContent = formatNumber(to);
+    el.dataset.motionValue = String(Number(to) || 0);
+    delete el.dataset.motionTarget;
+    rowNumberAnimations.delete(el);
+    return;
+  }
+  const startedAt = performance.now();
+  const delta = to - startValue;
+  const motion = { handle: 0, target: to, value: startValue };
+  el.textContent = formatNumber(startValue);
+  el.dataset.motionValue = String(startValue);
+  el.dataset.motionTarget = String(to);
+  function frame(now) {
+    if (prefersReducedMotion()) {
+      el.textContent = formatNumber(to);
+      el.dataset.motionValue = String(Number(to) || 0);
+      delete el.dataset.motionTarget;
+      if (rowNumberAnimations.get(el) === motion) rowNumberAnimations.delete(el);
+      return;
+    }
+    const progress = Math.min(1, (now - startedAt) / duration);
+    motion.value = startValue + delta * easeOutQuart(progress);
+    el.textContent = formatNumber(motion.value);
+    el.dataset.motionValue = String(motion.value);
+    if (progress < 1) {
+      motion.handle = requestAnimationFrame(frame);
+    } else {
+      delete el.dataset.motionTarget;
+      if (rowNumberAnimations.get(el) === motion) rowNumberAnimations.delete(el);
+    }
+  }
+  motion.handle = requestAnimationFrame(frame);
+  rowNumberAnimations.set(el, motion);
+}
+
+function animateBreakdownFrom(snapshot, { duration = 420 } = {}) {
+  if (prefersReducedMotion()) return;
+  let enteringIndex = 0;
+  for (const row of els.breakdown?.querySelectorAll('.row[data-key]') || []) {
+    const previous = snapshot.get(row.dataset.key);
+    const value = Number(row.dataset.motionValue || 0);
+    const fill = row.querySelector('.bar-fill');
+    const targetScale = Math.max(0, Math.min(1, Number(fill?.style.getPropertyValue('--bar-scale')) || 0));
+    if (previous) {
+      const deltaY = previous.top - row.getBoundingClientRect().top;
+      if (Math.abs(deltaY) > 0.5) {
+        row.animate([
+          { transform: `translate3d(0, ${deltaY}px, 0)` },
+          { transform: 'translate3d(0, 0, 0)' }
+        ], { duration: 280, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+      }
+      animateBarBetween(fill, previous.barScale, targetScale, 0, duration);
+      animateRowNumber(row.querySelector('.row-value'), previous.value, value, duration);
+      continue;
+    }
+    row.animate([
+      { opacity: 0, transform: 'translate3d(0, 7px, 0)' },
+      { opacity: 1, transform: 'translate3d(0, 0, 0)' }
+    ], {
+      duration: 240,
+      delay: Math.min(enteringIndex, 6) * 18,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      fill: 'backwards'
+    });
+    const delay = Math.min(enteringIndex, 6) * 18;
+    animateBarBetween(fill, 0, targetScale, delay, Math.max(1, duration - delay));
+    animateRowNumber(row.querySelector('.row-value'), 0, value, duration);
+    enteringIndex += 1;
+  }
+}
+
+function animateBarBetween(fill, fromScale, toScale, delay = 0, duration = 420) {
+  if (!fill?.animate) return;
+  const previous = rowBarAnimations.get(fill);
+  const previousIsActive = previous?.animation.pending || previous?.animation.playState === 'running';
+  if (previousIsActive && Math.abs(previous.target - toScale) < 0.001) return;
+  for (const animation of fill.getAnimations()) animation.cancel();
+  rowBarAnimations.delete(fill);
+  if (Math.abs(toScale - fromScale) < 0.001) return;
+  const animation = fill.animate([
+    { transform: `scaleX(${fromScale})` },
+    { transform: `scaleX(${toScale})` }
+  ], {
+    duration,
+    delay,
+    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    fill: 'backwards'
+  });
+  const motion = { animation, target: toScale };
+  const forget = () => {
+    if (rowBarAnimations.get(fill) === motion) rowBarAnimations.delete(fill);
+  };
+  animation.onfinish = forget;
+  animation.oncancel = forget;
+  rowBarAnimations.set(fill, motion);
+}
+
+function captureTrendBarMotion() {
+  const snapshot = new Map();
+  for (const bar of els.trendsPanel?.querySelectorAll('.spark-bar[data-motion-key]') || []) {
+    snapshot.set(bar.dataset.motionKey, { height: bar.getBoundingClientRect().height });
+  }
+  return snapshot;
+}
+
+function animateTrendBarsFrom(snapshot, { fromZero = false } = {}) {
+  if (prefersReducedMotion()) return;
+  const bars = Array.from(els.trendsPanel?.querySelectorAll('.spark-bar[data-motion-key]') || []);
+  bars.forEach((bar, index) => {
+    const previous = snapshot.get(bar.dataset.motionKey);
+    const targetHeight = bar.getBoundingClientRect().height;
+    const fromScale = fromZero || !previous
+      ? 0
+      : targetHeight > 0 ? previous.height / targetHeight : 1;
+    if (Math.abs(fromScale - 1) < 0.001) return;
+    bar.animate([
+      { transform: `scaleY(${fromScale})` },
+      { transform: 'scaleY(1)' }
+    ], {
+      duration: 420,
+      delay: previous && !fromZero ? 0 : Math.min(index, 14) * 14,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      fill: 'backwards'
+    });
+  });
+}
+
+const HOME_HISTORY_MOTION_MS = 920;
+const HOME_HEATMAP_MOTION_MS = 640;
+const HOME_HEAT_CELL_MOTION_MS = 240;
+
+function animateHomeHistoryVisuals(activityScroll, activityCanvas, trendChart) {
+  if (!state.animateChartsOnRender) return;
+  state.animateChartsOnRender = false;
+  if (prefersReducedMotion()) return;
+
+  const heatCells = Array.from(activityCanvas?.querySelectorAll('.heat-base-layer .heat') || []);
+  const viewport = activityScroll?.getBoundingClientRect();
+  const visibleCells = heatCells.map((cell, index) => ({ cell, column: Math.floor(index / 7), rect: cell.getBoundingClientRect() }))
+    .filter(({ rect }) => viewport && rect.right > viewport.left && rect.left < viewport.right);
+  const firstVisibleColumn = visibleCells.length ? visibleCells[0].column : 0;
+  const lastVisibleColumn = visibleCells.length ? visibleCells[visibleCells.length - 1].column : firstVisibleColumn;
+  const heatColumnDelay = (HOME_HEATMAP_MOTION_MS - HOME_HEAT_CELL_MOTION_MS) / Math.max(1, lastVisibleColumn - firstVisibleColumn);
+  visibleCells.forEach(({ cell, column }) => {
+    cell.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: HOME_HEAT_CELL_MOTION_MS,
+      delay: (column - firstVisibleColumn) * heatColumnDelay,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      fill: 'backwards'
+    });
+  });
+
+  const line = trendChart?.querySelector('.area-line-stroke');
+  const fill = trendChart?.querySelector('.area-line-fill');
+  const length = line?.getTotalLength?.() || 0;
+  if (length > 0) {
+    line.animate([
+      { strokeDasharray: `${length} ${length}`, strokeDashoffset: length },
+      { strokeDasharray: `${length} ${length}`, strokeDashoffset: 0 }
+    ], {
+      duration: HOME_HISTORY_MOTION_MS,
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      fill: 'backwards'
+    });
+  }
+  fill?.animate([
+    { clipPath: 'inset(0 100% 0 0)' },
+    { clipPath: 'inset(0 0 0 0)' }
+  ], {
+    duration: HOME_HISTORY_MOTION_MS,
+    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    fill: 'backwards'
+  });
+}
+
+function applyBarScale(fill, scale) {
+  const safeScale = Math.max(0, Math.min(1, Number(scale) || 0));
+  fill.style.setProperty('--bar-scale', String(safeScale));
+  if (!state.animateBarsFromZero || prefersReducedMotion() || !fill.animate) return;
+  animateBarBetween(fill, 0, safeScale, 0, 420);
 }
 
 function rowWidth(value, max) {
@@ -808,11 +1158,14 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, stale
   const detailEl = row.querySelector('.row-detail');
   detailEl.textContent = detail || '';
   detailEl.classList.toggle('hidden', !detail);
-  row.querySelector('.row-value').textContent = formatNumber(value);
+  const valueEl = row.querySelector('.row-value');
+  valueEl.textContent = formatNumber(value);
+  valueEl.dataset.motionValue = String(Number(value) || 0);
+  row.dataset.motionValue = String(Number(value) || 0);
   row.querySelector('.row-cost').textContent = formatCost(cost || 0);
   const fill = row.querySelector('.bar-fill');
   fill.style.background = color;
-  fill.style.width = `${width}%`;
+  applyBarScale(fill, width / 100);
 
   const accordionInner = row.querySelector('.row-accordion-inner');
   if ((cacheReadTokens !== undefined || outputTokens !== undefined) && value > 0 && kind !== 'session') {
@@ -866,8 +1219,12 @@ function renderRows(rows) {
     return;
   }
   const max = Math.max(1, ...rows.map((row) => row.value));
-  const signature = `${state.breakdown}\n${rows.map((row) => row.key).join('\n')}`;
-  const existing = new Map(Array.from(els.breakdown.children).map((child) => [child.dataset.key, child]));
+  const liveMotionSnapshot = !state.periodMotionActive && !state.animateBarsFromZero
+    ? captureBreakdownMotion()
+    : null;
+  const signature = JSON.stringify([state.breakdown, rows.map((row) => row.key)]);
+  const children = Array.from(els.breakdown.children);
+  const existing = new Map(children.map((child) => [child.dataset.key, child]));
   if (signature !== state.rowSignature) {
     els.breakdown.replaceChildren(...rows.map((row) => existing.get(row.key) || rowTemplate(row)));
     state.rowSignature = signature;
@@ -877,6 +1234,7 @@ function renderRows(rows) {
     const row = current.get(rowData.key);
     if (row) updateRow(row, { ...rowData, max });
   }
+  if (liveMotionSnapshot) animateBreakdownFrom(liveMotionSnapshot, { duration: 600 });
 }
 
 function deviceLabel(device) {
@@ -1270,7 +1628,7 @@ function limitWindowNode(label, window, color, tone = 1, valueOverride = null, d
   meter.style.background = colorWithAlpha(color, 0.16);
   const fill = document.createElement('div');
   fill.className = 'limit-meter-fill';
-  fill.style.width = `${safePercent}%`;
+  applyBarScale(fill, safePercent / 100);
   fill.style.background = color;
   fill.style.opacity = tone;
   meter.append(fill);
@@ -1909,7 +2267,7 @@ function exchangeNode(row, max) {
   wrap.querySelector('.detail-ex-sub').textContent = row.subtitle;
   wrap.querySelector('.detail-ex-value').textContent = formatNumber(row.value);
   wrap.querySelector('.detail-ex-cost').textContent = formatCost(row.cost);
-  wrap.querySelector('.bar-fill').style.width = `${rowWidth(row.value, max)}%`;
+  applyBarScale(wrap.querySelector('.bar-fill'), rowWidth(row.value, max) / 100);
 
   const turnsEl = wrap.querySelector('.detail-turns');
   for (const turn of row.turns) turnsEl.append(turnNode(turn));
@@ -1945,6 +2303,7 @@ let contentReadySignaled = false;
 
 function renderTrends() {
   const charts = window.TokenMonitorUsageCharts;
+  const previousBars = captureTrendBarMotion();
   const preview = state.stats?.historyPreview || { daily: [], monthly: [], summary: {} };
   const todayTotal = Number(state.stats?.periods?.today?.totalTokens || 0);
   const { points, metric, labelKey } = charts.selectPreviewSeries(preview, state.period);
@@ -1979,6 +2338,13 @@ function renderTrends() {
     + `<div class="trends-spark" role="button" tabindex="0" title="${t('trends.open')}">${svg}</div>`
     + `<div class="trends-axis"><span>${first}</span><span>${last}</span></div>`
     + `<div class="trends-stats">${statsHtml}</div>`;
+  const bars = Array.from(els.trendsPanel.querySelectorAll('.spark-bar'));
+  bars.forEach((bar, index) => {
+    bar.dataset.motionKey = String(finalPoints[index]?.[labelKey] || index);
+  });
+  const fromZero = state.animateChartsOnRender;
+  animateTrendBarsFrom(previousBars, { fromZero });
+  if (fromZero) state.animateChartsOnRender = false;
 }
 
 function viewLabelById(id) {
@@ -2010,6 +2376,25 @@ function openTrendSettings() {
   requestAnimationFrame(() => {
     document.getElementById('trendSettingsContainer')?.scrollIntoView({ block: 'nearest' });
   });
+}
+
+function openSettingsPanel() {
+  if (!els.settingsPanel) return;
+  if (state.viewSwitcherOpen) setViewSwitcherOpen(false);
+  els.settingsPanel.classList.remove('hidden');
+  els.shell.classList.add('settings-open');
+  els.shell.style.transform = 'translateZ(0)';
+  requestAnimationFrame(() => { els.shell.style.transform = ''; });
+}
+
+function openViewFromTray(viewId) {
+  if (!availableBreakdownIds().includes(viewId)) return;
+  if (state.viewSwitcherOpen) setViewSwitcherOpen(false);
+  stopWindowShortcutRecording();
+  els.settingsPanel?.classList.add('hidden');
+  els.shell.classList.remove('settings-open');
+  state.openSession = null;
+  renderBreakdownChange(viewId, { allowHidden: true });
 }
 
 async function loadHomeHistory() {
@@ -2125,7 +2510,8 @@ function renderViewSwitcher({ focusMenu = false, focusDisclosure = false } = {})
       return;
     }
     state.viewSwitcherOpen = false;
-    if (setBreakdown(nextBreakdown(state.breakdown))) render();
+    updateViewSwitcherOpenState();
+    renderBreakdownChange(nextBreakdown(state.breakdown));
   });
   current.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
@@ -2186,8 +2572,9 @@ function renderViewSwitcher({ focusMenu = false, focusDisclosure = false } = {})
     item.append(itemLabel);
     item.addEventListener('click', () => {
       state.viewSwitcherOpen = false;
-      if (setBreakdown(id)) render();
-      else renderViewSwitcher({ focusDisclosure: true });
+      updateViewSwitcherOpenState();
+      if (id === state.breakdown) renderViewSwitcher({ focusDisclosure: true });
+      else renderBreakdownChange(id);
     });
     menu.append(item);
   }
@@ -2225,13 +2612,13 @@ function homeModuleShell(kind, title, viewId, meta = '') {
   module.setAttribute('aria-label', title);
   module.addEventListener('click', (event) => {
     if (event.target.closest('.home-activity-scroll')) return;
-    if (setBreakdown(viewId)) render();
+    renderBreakdownChange(viewId);
   });
   module.addEventListener('keydown', (event) => {
     if (event.target !== module) return;
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
-    if (setBreakdown(viewId)) render();
+    renderBreakdownChange(viewId);
   });
   const head = document.createElement('div');
   head.className = 'home-module-head';
@@ -2487,8 +2874,17 @@ function applyHomeActivityScroll(scroller) {
   scroller.classList.toggle('is-scrolled', target > 2);
 }
 
-function setupHomeActivityScroller(scroller) {
+function setupHomeActivityScroller(scroller, onReady = null) {
   let drag = null;
+  let readySignaled = false;
+  const applySettledLayout = () => {
+    applyHomeActivityScroll(scroller);
+    if (readySignaled || typeof onReady !== 'function') return;
+    const svg = scroller.querySelector('.dash-heatmap');
+    if (scroller.clientWidth <= 0 || !svg || svg.getBoundingClientRect().width <= 0) return;
+    readySignaled = true;
+    onReady();
+  };
   scroller.addEventListener('scroll', () => {
     scroller.classList.toggle('is-scrolled', scroller.scrollLeft > 2);
     const record = homeOverviewApi.homeActivityScrollRecord({
@@ -2529,8 +2925,10 @@ function setupHomeActivityScroller(scroller) {
   // the panel becomes visible / the window resizes, so the measurement is always real.
   state.homeActivityResizeObserver?.disconnect();
   if (typeof ResizeObserver === 'function') {
-    state.homeActivityResizeObserver = new ResizeObserver(() => applyHomeActivityScroll(scroller));
+    state.homeActivityResizeObserver = new ResizeObserver(applySettledLayout);
     state.homeActivityResizeObserver.observe(scroller);
+  } else if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => requestAnimationFrame(applySettledLayout));
   }
   applyHomeActivityScroll(scroller);
 }
@@ -2728,8 +3126,6 @@ function renderHomeTrendsModule() {
     spotlightRadius: 82
   });
   activityScroll.append(activityCanvas);
-  setupHomeActivityScroller(activityScroll);
-  setupHomeActivityHover(activityScroll);
   const linePoints = charts.clampDaily(points, 45);
   const summary = homeOverviewApi.homeTrendSummary(linePoints);
   const trendHead = document.createElement('div');
@@ -2756,6 +3152,8 @@ function renderHomeTrendsModule() {
     dates.append(label);
   }
   body.append(activityScroll, trendHead, plot, dates);
+  setupHomeActivityScroller(activityScroll, () => animateHomeHistoryVisuals(activityScroll, activityCanvas, chart));
+  setupHomeActivityHover(activityScroll);
   return module;
 }
 
@@ -2826,15 +3224,24 @@ function render() {
   const totalChanged = nextTotal !== state.currentTotal;
   if (state.suppressInitialNumberAnimation) {
     cancelNumberAnimation();
+    numberAnimValue = nextTotal;
     els.totalTokens.textContent = formatNumber(nextTotal);
     updateTotalCompact(nextTotal);
     state.suppressInitialNumberAnimation = false;
   } else if (totalChanged) {
-    hideTotalCompact();
-    animateNumber(els.totalTokens, state.currentTotal, nextTotal, 2200, () => updateTotalCompact(nextTotal));
+    // Keep the compact chip visible through the count-up and lock the font to the
+    // widest endpoint first (a downward roll starts wider than it settles), so the
+    // number never vanishes, clips, or resizes mid-roll. Re-fit on completion so a
+    // window resize during the animation, or a downward settle, still ends correct.
+    const animationFrom = numberAnimHandle ? numberAnimValue : state.currentTotal;
+    const widest = formatNumber(nextTotal).length >= formatNumber(animationFrom).length ? nextTotal : animationFrom;
+    els.totalTokens.textContent = formatNumber(widest);
+    updateTotalCompact(nextTotal);
+    animateNumber(els.totalTokens, animationFrom, nextTotal, state.periodMotionActive ? 800 : 1000, fitTotalNumber);
     pulseLiveDot();
-  } else {
+  } else if (!headlineNumberIsAnimatingTo(nextTotal)) {
     cancelNumberAnimation();
+    numberAnimValue = nextTotal;
     els.totalTokens.textContent = formatNumber(nextTotal);
     updateTotalCompact(nextTotal);
   }
@@ -3077,6 +3484,23 @@ function setBreakdown(breakdown) {
   return true;
 }
 
+function renderBreakdownChange(breakdown, options = {}) {
+  if (!setBreakdown(breakdown, options)) return false;
+  state.animateBarsFromZero = true;
+  state.animateChartsOnRender = true;
+  let renderSucceeded = false;
+  try {
+    render();
+    renderSucceeded = true;
+  } finally {
+    state.animateBarsFromZero = false;
+    // Home consumes this flag asynchronously after ResizeObserver confirms layout.
+    // Clear it only after a failed render so that deferred entry motion still runs.
+    if (!renderSucceeded) state.animateChartsOnRender = false;
+  }
+  return true;
+}
+
 function restartTimer() {
   if (state.refreshTimer) clearInterval(state.refreshTimer);
   const interval = state.streamConnected
@@ -3110,6 +3534,7 @@ function applyAppearanceSettings(settings) {
   document.documentElement.style.setProperty('--line-strong-alpha', (0.18 + depth * 0.14).toFixed(3));
   document.documentElement.style.setProperty('--control-alpha', (0.03 + depth * 0.045).toFixed(3));
   document.documentElement.style.setProperty('--highlight-alpha', (0.045 + depth * 0.06).toFixed(3));
+  applyReduceMotionPreference(settings?.reduceMotion);
   // Only full settings objects carry themeColors; glass/zoom preview patches
   // omit it, so we must not wipe theme overrides mid-slider-drag.
   if (settings && 'themeColors' in settings) applyThemeColors(settings.themeColors);
@@ -3672,9 +4097,11 @@ function handleFloatingBubblePointerUp(event) {
 function appearancePatchFromControls() {
   return {
     systemGlass: Boolean(els.systemGlassInput.checked),
+    reduceMotion: els.reduceMotionInput?.value || 'system',
     showLiveDot: Boolean(els.liveDotInput.checked),
     showToolIcons: Boolean(els.toolIconsInput.checked),
     titleIconOnly: Boolean(els.titleIconInput.checked),
+    showCompactTotalTokens: Boolean(els.showCompactTotalTokensInput.checked),
     settingsInTitlebar: Boolean(els.settingsInTitlebarInput.checked),
     glassOpacity: Number(els.glassInput.value === '' ? defaultAppearance.glassOpacity : els.glassInput.value),
     glassBlur: Number(els.blurInput.value === '' ? defaultAppearance.glassBlur : els.blurInput.value),
@@ -3806,8 +4233,13 @@ async function refreshHubInfo() {
 }
 
 function syncPeriodTabs() {
-  for (const tab of document.querySelectorAll('.tab')) {
-    tab.classList.toggle('active', tab.dataset.period === state.period);
+  const tabs = Array.from(document.querySelectorAll('.tab'));
+  const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.dataset.period === state.period));
+  document.querySelector('.tabs')?.style.setProperty('--period-index', String(activeIndex));
+  for (const tab of tabs) {
+    const active = tab.dataset.period === state.period;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-pressed', String(active));
   }
 }
 
@@ -3867,9 +4299,12 @@ function syncSettingsForm() {
   }
   renderWslPanel();
   els.systemGlassInput.checked = state.settings.systemGlass !== false;
+  const reduceMotion = motionPreferenceApi.normalize(state.settings.reduceMotion);
+  if (els.reduceMotionInput) els.reduceMotionInput.value = reduceMotion;
   els.liveDotInput.checked = state.settings.showLiveDot !== false;
   els.toolIconsInput.checked = state.settings.showToolIcons !== false;
   els.titleIconInput.checked = state.settings.titleIconOnly === true;
+  els.showCompactTotalTokensInput.checked = state.settings.showCompactTotalTokens === true;
   els.settingsInTitlebarInput.checked = state.settings.settingsInTitlebar === true;
   els.discordRpcInput.checked = Boolean(state.settings.discordRpcEnabled);
   syncWindowBehaviorControls();
@@ -5126,12 +5561,15 @@ async function init() {
 
 for (const tab of document.querySelectorAll('.tab')) {
   tab.addEventListener('click', () => {
-    setPeriod(tab.dataset.period);
+    const snapshot = captureBreakdownMotion();
+    if (!setPeriod(tab.dataset.period)) return;
     syncPeriodTabs();
     if (state.openSession) openSessionDetail(state.openSession);
-    state.currentTotal = 0;
     state.rowSignature = '';
+    state.periodMotionActive = true;
     render();
+    state.periodMotionActive = false;
+    animateBreakdownFrom(snapshot, { duration: 800 });
   });
 }
 
@@ -5324,9 +5762,18 @@ els.themeCodeInput?.addEventListener('keydown', (event) => {
   void applyThemeCodeFromInput();
 });
 els.systemGlassInput.addEventListener('change', saveAppearanceFromControls);
+els.reduceMotionInput?.addEventListener('change', async () => {
+  state.settings.reduceMotion = applyReduceMotionPreference(els.reduceMotionInput.value);
+  await saveAppearanceFromControls();
+});
 els.liveDotInput.addEventListener('change', saveAppearanceFromControls);
 els.toolIconsInput.addEventListener('change', saveAppearanceFromControls);
 els.titleIconInput.addEventListener('change', saveAppearanceFromControls);
+els.showCompactTotalTokensInput.addEventListener('change', async () => {
+  await saveAppearanceFromControls();
+  if (!numberAnimHandle) updateTotalCompact(state.currentTotal);
+});
+window.addEventListener('resize', () => { if (!numberAnimHandle) fitTotalNumber(); });
 els.settingsInTitlebarInput.addEventListener('change', saveAppearanceFromControls);
 els.discordRpcInput.addEventListener('change', saveAppearanceFromControls);
 els.windowBehaviorInput.addEventListener('change', () => saveSettings({ windowBehavior: els.windowBehaviorInput.value }));
@@ -5429,6 +5876,14 @@ window.tokenMonitor.onSettingsPush?.((next) => {
   syncSettingsForm();
   maybeUpdateBarsIcon();
 });
+
+reducedMotionMedia?.addEventListener?.('change', () => {
+  if (motionPreferenceApi.normalize(state.settings?.reduceMotion) !== 'system') return;
+  applyReduceMotionPreference('system');
+});
+
+window.tokenMonitor.onOpenSettings?.(openSettingsPanel);
+window.tokenMonitor.onOpenView?.(openViewFromTray);
 
 window.tokenMonitor.onFloatingBubbleState?.((payload) => {
   applyFloatingBubbleState(payload);
