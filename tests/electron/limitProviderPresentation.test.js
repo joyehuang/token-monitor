@@ -351,7 +351,7 @@ test('Codex limits render as one provider group with account subrows', () => {
   const styles = readRendererFile('styles.css');
   const renderLimits = functionBody(app, 'renderLimits', 'serviceStatusLabel');
 
-  assert.match(renderLimits, /providersByLimitProviderId\(state\.stats\?\.limits\?\.providers \|\| \[\]\)/);
+  assert.match(renderLimits, /providersByLimitProviderId\(limitProvidersForDisplay\(\)\)/);
   assert.match(renderLimits, /renderCodexAccountGroup\(/);
   assert.doesNotMatch(renderLimits, /new Map\(\(state\.stats\?\.limits\?\.providers \|\| \[\]\)\.map\(\(provider\) => \[provider\.provider, provider\]\)\)/);
   assert.match(styles, /\.limit-account-list\s*\{/);
@@ -692,4 +692,78 @@ test('copilot setup status asks for sign-in instead of an API key', () => {
     presentation.limitProviderStatusLabel({ provider: 'copilot', status: 'notConfigured' }),
     { label: 'Sign in', tone: 'setup' }
   );
+});
+
+test('one account synced from two devices collapses into a single row', () => {
+  const deduped = presentation.dedupeLimitProvidersByAccount([
+    {
+      provider: 'claude',
+      accountKey: 'sha256:remote',
+      accountLabel: 'Max 5x',
+      accountEmail: 'user@example.com',
+      status: 'ok',
+      updatedAt: '2026-08-14T10:00:00.000Z',
+      windows: [{ kind: 'session' }, { kind: 'weekly' }]
+    },
+    {
+      provider: 'claude',
+      accountKey: 'sha256:local',
+      accountLabel: 'Max 5x',
+      accountEmail: '',
+      status: 'ok',
+      updatedAt: '2026-08-14T10:05:00.000Z',
+      windows: [{ kind: 'session' }, { kind: 'weekly' }]
+    },
+    {
+      provider: 'codex',
+      accountKey: 'sha256:cli',
+      accountEmail: 'user@example.com',
+      status: 'ok',
+      updatedAt: '2026-08-14T10:00:00.000Z',
+      windows: [{ kind: 'weekly' }]
+    },
+    {
+      provider: 'codex',
+      accountKey: 'sha256:app',
+      accountEmail: 'User@Example.com',
+      status: 'ok',
+      updatedAt: '2026-08-14T10:05:00.000Z',
+      windows: [{ kind: 'weekly' }]
+    }
+  ]);
+  assert.deepEqual(deduped.map((provider) => provider.provider), ['claude', 'codex']);
+  // The fresher device wins the quota numbers; the identity is filled in from its sibling.
+  assert.equal(deduped[0].accountKey, 'sha256:local');
+  assert.equal(deduped[0].accountEmail, 'user@example.com');
+  assert.equal(deduped[1].accountKey, 'sha256:app');
+});
+
+test('distinct account emails stay separate rows', () => {
+  const deduped = presentation.dedupeLimitProvidersByAccount([
+    { provider: 'codex', accountKey: 'a', accountEmail: 'one@example.com', status: 'ok', windows: [] },
+    { provider: 'codex', accountKey: 'b', accountEmail: 'two@example.com', status: 'ok', windows: [] }
+  ]);
+  assert.deepEqual(deduped.map((provider) => provider.accountEmail), ['one@example.com', 'two@example.com']);
+});
+
+test('a stale copy never shadows a fresh observation of the same account', () => {
+  const deduped = presentation.dedupeLimitProvidersByAccount([
+    {
+      provider: 'claude',
+      accountKey: 'stale',
+      status: 'ok',
+      stale: true,
+      updatedAt: '2026-08-14T11:00:00.000Z',
+      windows: [{ kind: 'session' }]
+    },
+    {
+      provider: 'claude',
+      accountKey: 'fresh',
+      status: 'ok',
+      updatedAt: '2026-08-14T10:00:00.000Z',
+      windows: [{ kind: 'session' }]
+    }
+  ]);
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0].accountKey, 'fresh');
 });

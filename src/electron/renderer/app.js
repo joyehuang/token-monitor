@@ -1670,6 +1670,13 @@ function providersByLimitProviderId(providers) {
   return byId;
 }
 
+// Every limit surface renders accounts, so it reads the deduped view. The raw
+// aggregate stays reachable for the settings account cards, which must reflect
+// this machine's own credential (see localDeviceLimitsProviders).
+function limitProvidersForDisplay() {
+  return limitProviderPresentationApi.dedupeLimitProvidersByAccount(state.stats?.limits?.providers || []);
+}
+
 function renderLimitProviderMark(id, color) {
   const mark = document.createElement('span');
   if (clientsWithIcon.has(id)) {
@@ -1956,7 +1963,7 @@ function renderLimits() {
   state.resetCreditsTooltipRenderPending = false;
   const limitsEnabled = state.settings?.limitsEnabled !== false;
   const enabled = enabledLimitProviderSet();
-  const providers = providersByLimitProviderId(state.stats?.limits?.providers || []);
+  const providers = providersByLimitProviderId(limitProvidersForDisplay());
   const nodes = [];
   const rows = limitProviderOrderApi
     .orderedLimitProviders(LIMIT_PROVIDERS, state.settings?.limitProviderOrder)
@@ -2653,7 +2660,7 @@ function homeLimitRows() {
   const providerOptions = limitProviderOrderApi.orderedLimitProviders(LIMIT_PROVIDERS, providerOrder);
   const hasConfiguredOrder = Boolean(state.settings?.homeLimitProviderOrder);
   return homeOverviewApi.homeLimitAccountsForProviders({
-    providers: state.stats?.limits?.providers || [],
+    providers: limitProvidersForDisplay(),
     providerOptions,
     enabledProviderIds: Array.from(enabled),
     hiddenProviderIds: Array.from(hiddenHomeLimitProviderSet()),

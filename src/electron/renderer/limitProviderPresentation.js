@@ -202,6 +202,80 @@
     return String(value || '').trim();
   }
 
+  function accountEmailKey(provider) {
+    return String(provider?.accountEmail || '').trim().toLowerCase();
+  }
+
+  function providerStatusRank(provider) {
+    const status = statusId(provider);
+    if (status === 'ok') return 3;
+    if (status === 'rateLimited') return 2;
+    if (status === 'disabled' || status === 'notConfigured') return 0;
+    return 1;
+  }
+
+  function providerTimestamp(provider) {
+    const parsed = Date.parse(provider?.updatedAt || '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function preferredAccountEntry(current, candidate) {
+    if (!current) return candidate;
+    if (Boolean(current.stale) !== Boolean(candidate.stale)) return current.stale ? candidate : current;
+    const statusDiff = providerStatusRank(candidate) - providerStatusRank(current);
+    if (statusDiff !== 0) return statusDiff > 0 ? candidate : current;
+    const windowDiff = (candidate?.windows?.length || 0) - (current?.windows?.length || 0);
+    if (windowDiff !== 0) return windowDiff > 0 ? candidate : current;
+    return providerTimestamp(candidate) >= providerTimestamp(current) ? candidate : current;
+  }
+
+  // The winning entry is picked for freshness, not for identity: the device that
+  // probed most recently may be the one that cannot read an email (Claude's
+  // keychain path yields a plan label only). Fill the missing identity fields
+  // from its siblings so the collapsed row still has a name to show.
+  function withMergedAccountIdentity(entries) {
+    const winner = entries.reduce((best, entry) => preferredAccountEntry(best, entry), null);
+    const merged = { ...winner };
+    for (const field of ['accountEmail', 'accountName', 'accountLabel']) {
+      if (String(merged[field] || '').trim()) continue;
+      const donor = entries.find((entry) => String(entry?.[field] || '').trim());
+      if (donor) merged[field] = donor[field];
+    }
+    return merged;
+  }
+
+  // A quota belongs to an account, not to a machine: the same Claude/Codex login
+  // seen from two synced devices hashes to two accountKeys (keychain identity vs
+  // CLI RPC source), so the hub aggregate carries it twice and the UI renders the
+  // account twice. Collapse a provider's entries unless they prove they are
+  // different logins — i.e. unless they carry more than one distinct account
+  // email. Real multi-account setups (two emails) stay separate.
+  function dedupeLimitProvidersByAccount(providers) {
+    const byProvider = new Map();
+    for (const provider of Array.isArray(providers) ? providers : []) {
+      const id = providerId(provider);
+      if (!id) continue;
+      if (!byProvider.has(id)) byProvider.set(id, []);
+      byProvider.get(id).push(provider);
+    }
+    const deduped = [];
+    for (const entries of byProvider.values()) {
+      const emails = new Set(entries.map(accountEmailKey).filter(Boolean));
+      if (emails.size <= 1) {
+        deduped.push(withMergedAccountIdentity(entries));
+        continue;
+      }
+      const byEmail = new Map();
+      for (const entry of entries) {
+        const key = accountEmailKey(entry);
+        if (!byEmail.has(key)) byEmail.set(key, []);
+        byEmail.get(key).push(entry);
+      }
+      for (const bucket of byEmail.values()) deduped.push(withMergedAccountIdentity(bucket));
+    }
+    return deduped;
+  }
+
   function providerMatchesTarget(candidate, target) {
     if (providerId(candidate) !== providerId(target)) return false;
     const targetAccountKey = accountKey(target?.accountKey);
@@ -298,6 +372,7 @@
 
   return {
     apiKeyAccountStatus,
+    dedupeLimitProvidersByAccount,
     isCodexLiveAccount,
     isInactiveLimitWindow,
     limitProviderCapabilityTags,
