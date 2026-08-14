@@ -1626,6 +1626,11 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 }
 .tabs {
   --period-index: 0;
+  /* Fallback for the first paint only — syncPeriodTabs() sets the real count
+     from the markup. The indicator's width and step are both derived from it,
+     so a hardcoded count silently misplaces the pill when a period is added
+     (upstream ships three periods, this fork has four). */
+  --period-count: 4;
   position: relative;
   z-index: 1;
   display: grid;
@@ -1646,7 +1651,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   top: 3px;
   bottom: 3px;
   left: 3px;
-  width: calc((100% - 10px) / 3);
+  width: calc((100% - 6px - (var(--period-count) - 1) * 2px) / var(--period-count));
   border: 1px solid rgba(var(--line-rgb), 0.13);
   border-radius: 6px;
   background: rgba(var(--overlay-rgb), 0.06);

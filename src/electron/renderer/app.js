@@ -4242,7 +4242,9 @@ async function refreshHubInfo() {
 function syncPeriodTabs() {
   const tabs = Array.from(document.querySelectorAll('.tab'));
   const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.dataset.period === state.period));
-  document.querySelector('.tabs')?.style.setProperty('--period-index', String(activeIndex));
+  const strip = document.querySelector('.tabs');
+  strip?.style.setProperty('--period-count', String(tabs.length || 1));
+  strip?.style.setProperty('--period-index', String(activeIndex));
   for (const tab of tabs) {
     const active = tab.dataset.period === state.period;
     tab.classList.toggle('active', active);
