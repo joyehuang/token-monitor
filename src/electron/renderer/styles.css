@@ -268,9 +268,11 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .title-controls {
   -webkit-app-region: no-drag;
   position: relative;
-  flex: 0 1 172px;
-  min-width: 132px;
-  width: 172px;
+  /* min-width is the floor at which the longest label (MONTH) still fits its
+     cell: 4 x (5ch + 4px padding) + the strip's own padding and border. */
+  flex: 0 1 176px;
+  min-width: 144px;
+  width: 176px;
   height: 32px;
 }
 .actions-hotspot {
@@ -1633,12 +1635,16 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
      so a hardcoded count silently misplaces the pill when a period is added
      (upstream ships three periods, this fork has four). */
   --period-count: 4;
+  --period-pad: 4px;
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 2px;
-  padding: 3px;
+  grid-template-columns: repeat(var(--period-count), minmax(0, 1fr));
+  /* No column gap: the cells tile edge to edge so the pill's travel is a plain
+     multiple of its own width, and every label keeps the full cell to breathe
+     in (at 132px the old 2px gaps pushed MONTH/TOTAL into each other). */
+  gap: 0;
+  padding: var(--period-pad);
   width: 100%;
   border: 1px solid rgba(var(--line-rgb), 0.09);
   border-radius: 10px;
@@ -1647,36 +1653,47 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
+/* Sized and offset off the same --period-pad as the strip, so the pill lands
+   exactly on the cell box instead of standing 2px taller than the labels. */
 .tab-indicator {
   position: absolute;
   z-index: 0;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc((100% - 6px - (var(--period-count) - 1) * 2px) / var(--period-count));
-  border: 1px solid rgba(var(--line-rgb), 0.13);
-  border-radius: 6px;
-  background: rgba(var(--overlay-rgb), 0.06);
-  box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.075);
+  top: var(--period-pad);
+  bottom: var(--period-pad);
+  left: var(--period-pad);
+  width: calc((100% - 2 * var(--period-pad)) / var(--period-count));
+  border: 1px solid rgba(var(--accent-rgb), 0.26);
+  border-radius: 7px;
+  background: rgba(var(--accent-rgb), 0.1);
+  box-shadow: inset 0 1px 0 rgba(var(--overlay-rgb), 0.08);
   pointer-events: none;
-  transform: translate3d(calc(var(--period-index) * (100% + 2px)), 0, 0);
+  transform: translate3d(calc(var(--period-index) * 100%), 0, 0);
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .tab {
   position: relative;
   z-index: 1;
-  height: 22px;
-  border-color: transparent;
-  border-radius: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 2px;
+  /* The label sits ON the indicator, so it must contribute no surface of its
+     own: the shared control rule's border and backdrop blur would otherwise
+     paint a second, 1px-inset rounded edge inside the pill. */
+  border: 0;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted);
   font-size: 10px;
+  letter-spacing: -0.2px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
   box-shadow: none;
 }
 .tab:hover { color: var(--text); }
 .tab.active {
-  border-color: transparent;
   color: var(--green);
   background: transparent;
   box-shadow: none;
