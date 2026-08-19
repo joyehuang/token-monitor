@@ -63,17 +63,32 @@ test('applyControlLayout relocates the two buttons between the slots', () => {
   assert.match(body, /appendChild\(els\.refreshButton\)/);
 });
 
-test('window-actions and tabs fade out after a leave grace delay, in instantly', () => {
+// The tabs and the window buttons share one box, so a symmetric crossfade shows
+// the period labels through the buttons at half opacity for the whole overlap.
+// Each direction instead runs as leave-then-enter: the layer on its way out
+// finishes before the incoming one starts.
+test('tabs and window-actions swap in sequence, never fading through each other', () => {
   const css = readRendererFile('styles.css');
 
-  const actions = cssRule(css, '.window-actions');
-  assert.match(declaration(actions, 'transition'), /280ms/, 'window-actions resting state carries the 280ms leave delay');
+  // A state that only overrides transition-delay keeps the base rule's duration.
+  function timing(rule, baseRule = rule) {
+    const shorthand = declaration(rule, 'transition') || declaration(baseRule, 'transition');
+    const opacity = shorthand.match(/opacity\s+(\d+)ms(?:\s+[a-z-]+)?(?:\s+(\d+)ms)?/);
+    assert.ok(opacity, 'opacity timing should be readable');
+    const override = declaration(rule, 'transition-delay');
+    const delay = override ? Number.parseInt(override, 10) : Number(opacity[2] || 0);
+    return { start: delay, end: delay + Number(opacity[1]) };
+  }
 
-  const reveal = cssRule(css, '.actions-hotspot:hover ~ .window-actions, .window-actions:hover, .window-actions:focus-within, .shell.settings-open .window-actions');
-  assert.equal(declaration(reveal, 'transition-delay'), '0ms', 'revealed state shows instantly');
+  const actionsHidden = timing(cssRule(css, '.window-actions'));
+  const actionsShown = timing(cssRule(css, '.actions-hotspot:hover ~ .window-actions, .window-actions:hover, .window-actions:focus-within, .shell.settings-open .window-actions'), cssRule(css, '.window-actions'));
+  const tabsShown = timing(cssRule(css, '.title-controls .tabs'));
+  const tabsHidden = timing(cssRule(css, '.title-controls:has(.actions-hotspot:hover) .tabs, .title-controls:has(.window-actions:hover) .tabs, .title-controls:has(.window-actions:focus-within) .tabs, .shell.settings-open .title-controls .tabs'), cssRule(css, '.title-controls .tabs'));
 
-  const tabs = cssRule(css, '.title-controls .tabs');
-  assert.match(declaration(tabs, 'transition'), /280ms/, 'tabs restore after the same 280ms grace');
+  assert.ok(tabsHidden.start > 0, 'a grace delay keeps a mouse passing the hotspot from flipping the strip');
+  assert.ok(actionsShown.start >= tabsHidden.end, 'on hover the tabs are gone before the buttons appear');
+  assert.ok(actionsHidden.start > 0, 'leaving keeps the buttons for a grace delay');
+  assert.ok(tabsShown.start >= actionsHidden.end, 'on leave the buttons are gone before the tabs come back');
 });
 
 test('hover hotspot stays right-anchored and never extends left over the tabs', () => {

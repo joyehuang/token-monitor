@@ -281,6 +281,8 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   height: 22px;
   z-index: 5;
 }
+/* .window-actions and .tabs share this box; their fades are staggered (see the
+   swap rules below) so the layer leaving is gone before the other arrives. */
 .window-actions {
   position: absolute;
   top: 0;
@@ -292,7 +294,7 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   opacity: 0;
   pointer-events: none;
   transform: translateY(-2px);
-  transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
+  transition: opacity 120ms ease 180ms, transform 120ms ease 180ms;
   z-index: 4;
 }
 #titlebarActionSlot { display: contents; }
@@ -307,19 +309,19 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
-  transition-delay: 0ms;
+  transition-delay: 300ms;
 }
 .title-controls .tabs {
   position: absolute;
   inset: 0;
   width: 100%;
-  transition: opacity 160ms ease 280ms, transform 160ms ease 280ms;
+  transition: opacity 120ms ease 300ms, transform 120ms ease 300ms;
 }
 .title-controls:has(.actions-hotspot:hover) .tabs, .title-controls:has(.window-actions:hover) .tabs, .title-controls:has(.window-actions:focus-within) .tabs, .shell.settings-open .title-controls .tabs {
   opacity: 0;
   transform: translateY(2px);
   pointer-events: none;
-  transition-delay: 0ms;
+  transition-delay: 180ms;
 }
 .icon-button, .refresh-button, .settings-actions button, .shortcut-recorder button, .tab, .mode-button, .home-empty-action, .home-module-empty-action {
   border: 1px solid var(--line);
