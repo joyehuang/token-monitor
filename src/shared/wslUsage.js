@@ -174,6 +174,14 @@ function clientsForHomeScan(clientsCsv, home, existsSync) {
   return kept.join(',');
 }
 
+function rollingWeekSince(date = new Date()) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 6);
+  const year = start.getFullYear();
+  const month = String(start.getMonth() + 1).padStart(2, '0');
+  const day = String(start.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function wslUsageHomes(deps = {}) {
   const readdirSync = deps.readdirSync || fs.readdirSync;
   const existsSync = deps.existsSync || fs.existsSync;
@@ -203,7 +211,8 @@ function probeWslState(deps = {}) {
 }
 
 async function collectWslUsage(options = {}, deps = {}) {
-  const { clients, allTimeSince, commandTimeoutMs, runTokscale, logger } = options;
+  const { clients, allTimeSince, weekSince, commandTimeoutMs, runTokscale, logger } = options;
+  const rollingSince = weekSince || rollingWeekSince(options.now != null ? new Date(options.now) : new Date());
   const existsSync = deps.existsSync || fs.existsSync;
   const bundle = emptyWslBundle();
   const detected = new Set();
@@ -230,7 +239,7 @@ async function collectWslUsage(options = {}, deps = {}) {
     try {
       // Serial on purpose (issue #15): never run these concurrently.
       const todayJson = await runTokscale({ clients: homeClientsCsv, flags: ['--today', '--home', home], commandTimeoutMs });
-      const weekJson = await runTokscale({ clients: homeClientsCsv, flags: ['--week', '--home', home], commandTimeoutMs });
+      const weekJson = await runTokscale({ clients: homeClientsCsv, flags: ['--since', rollingSince, '--home', home], commandTimeoutMs });
       const monthJson = await runTokscale({ clients: homeClientsCsv, flags: ['--month', '--home', home], commandTimeoutMs });
       const allTimeJson = await runTokscale({ clients: homeClientsCsv, flags: ['--since', allTimeSince, '--home', home], commandTimeoutMs });
       bundle.today = mergePeriods(bundle.today, extractUsageFromTokscale(todayJson));

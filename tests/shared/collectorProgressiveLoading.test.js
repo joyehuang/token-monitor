@@ -8,14 +8,16 @@ const { emptyPeriod } = require('../../src/shared/usage');
 
 // Stub tokscale so the full scan returns controlled data per period.
 let calls = 0;
-async function sequentialTokscale() {
+let seenFlags = [];
+async function sequentialTokscale({ flags } = {}) {
   calls += 1;
+  seenFlags.push(flags || []);
   if (calls === 1) {
     // --today
     return { entries: [{ client: 'claude', sessionId: 's1', model: 'claude-opus-4-8', input: 100, output: 5, cost: 1 }] };
   }
   if (calls === 2) {
-    // --week
+    // rolling seven days via --since
     return { entries: [
       { client: 'claude', sessionId: 's1', model: 'claude-opus-4-8', input: 300, output: 10, cost: 3 },
       { client: 'claude', sessionId: 's2', model: 'claude-sonnet-4-8', input: 100, output: 5, cost: 0.5 }
@@ -37,6 +39,7 @@ async function sequentialTokscale() {
 
 test('progressive loading fires onProgress after each period scan', async () => {
   calls = 0;
+  seenFlags = [];
   const partials = [];
   const summary = await collectUsageOnce({
     clients: 'claude',
@@ -45,6 +48,7 @@ test('progressive loading fires onProgress after each period scan', async () => 
     deviceId: 'dev1',
     limitsEnabled: false,
     historyEnabled: false,
+    now: new Date(2026, 6, 1, 12, 0, 0),
     runTokscale: sequentialTokscale,
     collectWslUsage: async () => ({ bundle: emptyWslBundle(), detected: [] }),
     onProgress: (data) => partials.push({ ...data })
@@ -75,6 +79,7 @@ test('progressive loading fires onProgress after each period scan', async () => 
   assert.equal(summary.week.totalTokens, 415, 'final week');
   assert.equal(summary.month.totalTokens, 730, 'final month');
   assert.equal(summary.allTime.totalTokens, 2930, 'final allTime');
+  assert.deepEqual(seenFlags[1], ['--since', '2026-06-25'], 'week scan should use a rolling local seven-day boundary');
 });
 
 test('progressive loading skips onProgress on anchored ticks', async () => {

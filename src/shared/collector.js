@@ -149,9 +149,16 @@ function localTodayKey(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+// Tokscale's --week is the current calendar week, not a rolling seven-day
+// window. The product's Week means today plus the previous six local calendar
+// days, so express that boundary explicitly through --since.
+function rollingWeekSince(date = new Date()) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 6);
+  return localTodayKey(start);
+}
+
 // Stamp each posted snapshot with the UTC instant its today/week/month windows
-// end. `week` is tokscale's rolling last-7-days window, so it rolls at local
-// midnight just like `today`.
+// end. The rolling week advances at local midnight just like `today`.
 function computePeriodWindows(now = new Date()) {
   const startOfNextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
   const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
@@ -382,6 +389,7 @@ async function collectUsageOnce(options) {
   // straddles local midnight cannot pair a day-N today scan with a day-N+1
   // window (issue #37 follow-up). Injectable for tests.
   const collectedAt = options.now != null ? new Date(options.now) : new Date();
+  const weekSince = rollingWeekSince(collectedAt);
   const runTokscaleFn = options.runTokscale || runTokscale;
   const collectWsl = options.collectWslUsage || collectWslUsageImpl;
   const probeWslStateFn = options.probeWslState || probeWslStateImpl;
@@ -414,7 +422,7 @@ async function collectUsageOnce(options) {
       const todayJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--today'], commandTimeoutMs });
       today = extractUsageFromTokscale(todayJson);
       try { if (typeof options.onProgress === 'function') options.onProgress({ today, updatedAt: new Date().toISOString() }); } catch (_) {}
-      const weekJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--week'], commandTimeoutMs });
+      const weekJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--since', weekSince], commandTimeoutMs });
       week = extractUsageFromTokscale(weekJson);
       try { if (typeof options.onProgress === 'function') options.onProgress({ today, week, updatedAt: new Date().toISOString() }); } catch (_) {}
       const monthJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--month'], commandTimeoutMs });
@@ -445,6 +453,7 @@ async function collectUsageOnce(options) {
       const wslResult = await collectWsl({
         clients: normalizedClients,
         allTimeSince,
+        weekSince,
         commandTimeoutMs,
         runTokscale: runTokscaleFn,
         logger: options.logger
@@ -457,6 +466,7 @@ async function collectUsageOnce(options) {
       const wslResult = await collectWsl({
         clients: normalizedClients,
         allTimeSince,
+        weekSince,
         commandTimeoutMs,
         runTokscale: runTokscaleFn,
         logger: options.logger
@@ -733,8 +743,9 @@ function wslPeriodsForPreview(wslAnchor, anchorDateKey, todayKey) {
 
 function configFingerprint(clientsCsv, allTimeSince) {
   // Deterministic string that captures the config inputs anchor correctness
-  // depends on. When this changes, the persisted anchor is invalidated.
-  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}`;
+  // depends on. The semantics suffix invalidates anchors written when Week used
+  // tokscale's calendar --week instead of the rolling seven-day --since window.
+  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}|rolling-week-v1`;
 }
 
 // Force a full scan at least this often even when the anchor is otherwise
@@ -1076,6 +1087,7 @@ module.exports = {
   HISTORY_INTERVAL_VALUES,
   localTodayKey,
   normalizeHistoryIntervalMs,
+  rollingWeekSince,
   sessionTimestampMap,
   locateBundledBinary,
   lookupModelPricing,

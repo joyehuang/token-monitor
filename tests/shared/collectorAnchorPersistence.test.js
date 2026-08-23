@@ -16,7 +16,8 @@ function freshCollector() {
 const {
   configFingerprint,
   collectUsageOnce,
-  localTodayKey
+  localTodayKey,
+  rollingWeekSince
 } = require('../../src/shared/collector');
 
 const { emptyPeriod } = require('../../src/shared/usage');
@@ -36,7 +37,7 @@ test('configFingerprint normalizes clients and includes allTimeSince', () => {
   const b = configFingerprint('claude,codex', '2024-01-01');
   // whitespace-normalised to the same value
   assert.equal(a, b, 'whitespace should be normalized');
-  assert.match(a, /^claude,codex\|2024-01-01$/);
+  assert.equal(a, 'claude,codex|2024-01-01|rolling-week-v1');
 
   const c = configFingerprint('claude', '2024-01-01');
   assert.notEqual(a, c, 'different clients should differ');
@@ -47,13 +48,18 @@ test('configFingerprint normalizes clients and includes allTimeSince', () => {
 
 test('configFingerprint handles undefined and empty clients', () => {
   const a = configFingerprint(undefined, '2024-01-01');
-  assert.equal(a, '|2024-01-01', 'undefined clients should produce empty string before pipe');
+  assert.equal(a, '|2024-01-01|rolling-week-v1', 'undefined clients should produce empty string before pipe');
 
   const b = configFingerprint('', '2024-01-01');
-  assert.equal(b, '|2024-01-01', 'empty clients should produce same as undefined');
+  assert.equal(b, '|2024-01-01|rolling-week-v1', 'empty clients should produce same as undefined');
 
   const c = configFingerprint('claude', undefined);
-  assert.match(c, /\|undefined$/, 'undefined allTimeSince produces string "undefined"');
+  assert.equal(c, 'claude|undefined|rolling-week-v1', 'undefined allTimeSince produces string "undefined"');
+});
+
+test('rollingWeekSince includes today and the previous six local calendar days', () => {
+  assert.equal(rollingWeekSince(new Date(2026, 7, 23, 23, 30)), '2026-08-17');
+  assert.equal(rollingWeekSince(new Date(2026, 0, 3, 0, 30)), '2025-12-28');
 });
 
 test('anchored tick with valid anchor runs todayOnly scan and derives week/month/allTime', async () => {
@@ -132,7 +138,7 @@ test('restart reuse: anchor file on disk enables todayOnly on first interval tic
     dateKey,
     today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: null,
-    configFingerprint: 'claude|2024-01-01',
+    configFingerprint: configFingerprint(baseOptions.clients, baseOptions.allTimeSince),
     fullScanAt: new Date(Date.now() - 300000).toISOString() // 5 minutes ago — within the 1h safety window
   };
   fs.writeFileSync(path.join(tmpShared, 'collector-anchor.json'), JSON.stringify(anchorData));
@@ -193,7 +199,7 @@ test('future fullScanAt forces a full scan on first interval tick', async () => 
     dateKey,
     today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: null,
-    configFingerprint: 'claude|2024-01-01',
+    configFingerprint: configFingerprint(baseOptions.clients, baseOptions.allTimeSince),
     fullScanAt: new Date(Date.now() + 3600000).toISOString() // 1 hour in the future
   };
   fs.writeFileSync(path.join(tmpShared, 'collector-anchor.json'), JSON.stringify(anchorData));
@@ -253,7 +259,7 @@ test('missing fullScanAt forces a full scan on first interval tick', async () =>
     dateKey,
     today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: null,
-    configFingerprint: 'claude|2024-01-01'
+    configFingerprint: configFingerprint(baseOptions.clients, baseOptions.allTimeSince)
     // no fullScanAt — triggers lastFullScanAt = 0 → full scan
   };
   fs.writeFileSync(path.join(tmpShared, 'collector-anchor.json'), JSON.stringify(anchorData));
@@ -314,7 +320,7 @@ test('unparseable fullScanAt forces a full scan on first interval tick', async (
     dateKey,
     today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: null,
-    configFingerprint: 'claude|2024-01-01',
+    configFingerprint: configFingerprint(baseOptions.clients, baseOptions.allTimeSince),
     fullScanAt: 'not-a-timestamp'
   };
   fs.writeFileSync(path.join(tmpShared, 'collector-anchor.json'), JSON.stringify(anchorData));
@@ -378,7 +384,7 @@ test('WSL toggle off: persisted wslAnchor is not merged into warm previews', asy
     dateKey,
     today: mkPeriod(), week: mkPeriod(), month: mkPeriod(), allTime: mkPeriod(),
     wslBundle: { today: wslPeriod, month: wslPeriod, allTime: wslPeriod },
-    configFingerprint: 'claude|2024-01-01'
+    configFingerprint: configFingerprint(baseOptions.clients, baseOptions.allTimeSince)
     // no fullScanAt -> forces a full scan on the first interval tick
   };
   fs.writeFileSync(path.join(tmpShared, 'collector-anchor.json'), JSON.stringify(anchorData));

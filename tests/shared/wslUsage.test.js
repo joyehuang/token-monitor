@@ -172,7 +172,8 @@ function entriesJson(tokens) {
 function tokscaleStub(map) {
   return async ({ flags }) => {
     const home = flags[flags.indexOf('--home') + 1];
-    const period = flags.includes('--today') ? 'today' : flags.includes('--week') ? 'week' : flags.includes('--month') ? 'month' : 'allTime';
+    const since = flags.includes('--since') ? flags[flags.indexOf('--since') + 1] : '';
+    const period = flags.includes('--today') ? 'today' : flags.includes('--month') ? 'month' : since === '2025-01-01' ? 'allTime' : 'week';
     return entriesJson(map[home][period]);
   };
 }

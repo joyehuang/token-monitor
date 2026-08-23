@@ -59,7 +59,7 @@ test('wslPeriodsForPreview gates the frozen WSL snapshot by day and month', () =
 // Host-only tokscale results per period (totalTokens = input + output).
 function hostScan({ flags }) {
   if (flags.includes('--today')) return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 100, output: 0, cost: 1 }] };
-  if (flags.includes('--week')) return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 200, output: 0, cost: 2 }] };
+  if (flags.includes('--since') && flags[flags.indexOf('--since') + 1] !== '2024-01-01') return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 200, output: 0, cost: 2 }] };
   if (flags.includes('--month')) return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 300, output: 0, cost: 3 }] };
   return { entries: [{ client: 'claude', sessionId: 'h', model: 'm', input: 1000, output: 0, cost: 10 }] };
 }
