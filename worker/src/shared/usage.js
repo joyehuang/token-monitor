@@ -204,6 +204,12 @@ function utcDayKey(date) {
   return `${utcMonthKey(date)}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
 
+function addDaysToDayKey(key, delta) {
+  const ms = Date.parse(`${String(key || '').slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms + delta * 86400000).toISOString().slice(0, 10);
+}
+
 // today/week/month are wall-clock windows: the device stamps each with the UTC
 // instant it ends (next local midnight for day/week, next local month start for
 // month, computed in the device's own timezone). The hub expires a frozen
@@ -223,6 +229,87 @@ function normalizePeriodWindows(value) {
     if (window.key) result[periodName].key = String(window.key);
   }
   return Object.keys(result).length ? result : null;
+}
+
+function hasPeriodPayload(record, periodName) {
+  return hasOwn(record, periodName) || hasOwn(record?.periods, periodName);
+}
+
+function recordLocalDayKey(record) {
+  const windowKey = String(record?.periodWindows?.today?.key || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(windowKey)) return windowKey;
+  const date = recordDate(record);
+  return date ? utcDayKey(date) : '';
+}
+
+// Newer upstream clients currently post today/month/allTime without the fork's
+// rolling `week` field. Build the missing window from the device's full daily
+// history when available, replacing history's possibly stale current-day bucket
+// with the live `today` period. History has client/model attribution (but not
+// sessions), which is enough for the hub's aggregate model/tool/home breakdowns.
+function historyDayPeriod(day) {
+  const period = emptyPeriod();
+  period.totalTokens = Math.max(0, Math.round(asNumber(day?.tokens ?? day?.totalTokens)));
+  period.costUsd = Math.max(0, asNumber(day?.cost ?? day?.costUsd));
+  for (const [client, value] of Object.entries(day?.perClient || {})) {
+    const name = normalizeClientName(client);
+    if (!name) continue;
+    const tokens = Math.max(0, Math.round(asNumber(value?.tokens ?? value)));
+    const cost = Math.max(0, asNumber(value?.cost ?? value?.costUsd));
+    if (tokens > 0) period.clients[name] = (period.clients[name] || 0) + tokens;
+    if (cost > 0) period.clientCosts[name] = (period.clientCosts[name] || 0) + cost;
+  }
+  for (const [model, value] of Object.entries(day?.perModel || {})) {
+    const name = normalizeModelName(model);
+    if (!name) continue;
+    const tokens = Math.max(0, Math.round(asNumber(value?.tokens ?? value)));
+    const cost = Math.max(0, asNumber(value?.cost ?? value?.costUsd));
+    if (tokens > 0) period.models[name] = (period.models[name] || 0) + tokens;
+    if (cost > 0) period.modelCosts[name] = (period.modelCosts[name] || 0) + cost;
+  }
+  return period;
+}
+
+function deriveMissingWeek(existingRecord, incomingRecord) {
+  const today = normalizePeriod(incomingRecord?.periods?.today);
+  const todayKey = recordLocalDayKey(incomingRecord);
+  const daily = coerceHistory(incomingRecord?.history).daily;
+  if (todayKey && daily.length > 0) {
+    const cutoff = addDaysToDayKey(todayKey, -6);
+    const week = emptyPeriod();
+    for (const day of daily) {
+      const key = String(day?.date || '').slice(0, 10);
+      if (key >= cutoff && key < todayKey) addPeriodInto(week, historyDayPeriod(day));
+    }
+    addPeriodInto(week, today);
+    return week;
+  }
+
+  // History is interval-gated. Once a compatible fallback has been stored,
+  // preserve its prior six days and apply only today's live delta between posts.
+  const existingToday = normalizePeriod(existingRecord?.periods?.today);
+  const existingWeek = normalizePeriod(existingRecord?.periods?.week);
+  const sameDay = todayKey && todayKey === recordLocalDayKey(existingRecord);
+  const existingWeekIsUsable = existingWeek.totalTokens >= existingToday.totalTokens;
+  if (sameDay && existingWeekIsUsable) {
+    return normalizePeriod(applyPeriodDelta(existingWeek, today, existingToday));
+  }
+
+  // There is no exact way to infer previous days from only today/month/allTime.
+  // Today is the truthful lower bound and, unlike an empty normalized period,
+  // preserves the invariant that a rolling week can never be smaller than today.
+  return today;
+}
+
+function fillMissingWeek(existingRecord, incomingRecord) {
+  incomingRecord.periods.week = deriveMissingWeek(existingRecord, incomingRecord);
+  const todayWindow = incomingRecord.periodWindows?.today;
+  if (todayWindow && !incomingRecord.periodWindows?.week) {
+    incomingRecord.periodWindows = {
+      ...incomingRecord.periodWindows,
+      week: { ...todayWindow }
+    };
+  }
 }
 
 function detectModel(obj) {
@@ -642,8 +729,12 @@ function mergeDeviceRecord(existing, incoming) {
   const hasIncomingLimits = incoming && typeof incoming === 'object' && Object.prototype.hasOwnProperty.call(incoming, 'limits');
   const hasIncomingHistory = incoming && typeof incoming === 'object' && Object.prototype.hasOwnProperty.call(incoming, 'history');
   const hasIncomingTrackedClients = hasOwn(incoming, 'trackedClients');
+  const hasIncomingWeek = hasPeriodPayload(incoming, 'week');
   const normalizedIncoming = normalizeDeviceRecord(incoming || {});
-  if (!hasExisting) return normalizedIncoming;
+  if (!hasExisting) {
+    if (!hasIncomingWeek) fillMissingWeek(null, normalizedIncoming);
+    return normalizedIncoming;
+  }
 
   const normalizedExisting = normalizeDeviceRecord(existing);
   if (incoming?.limitsOnly === true) {
@@ -660,6 +751,7 @@ function mergeDeviceRecord(existing, incoming) {
   if (hasIncomingTrackedClients) {
     preserveUntrackedClientUsage(normalizedExisting, normalizedIncoming, normalizedIncoming.trackedClients || []);
   }
+  if (!hasIncomingWeek) fillMissingWeek(normalizedExisting, normalizedIncoming);
   return normalizedIncoming;
 }
 

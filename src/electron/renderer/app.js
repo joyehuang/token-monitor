@@ -2747,7 +2747,7 @@ function renderHomeLimitModule() {
 
 function renderHomeModelModule(period) {
   const { module, body } = homeModuleShell('model', t('home.models'), 'model');
-  const rows = homeOverviewApi.homeModelRows(modelRowsForPeriod(period), period?.totalTokens, 5);
+  const rows = homeOverviewApi.homeModelRows(modelRowsForPeriod(period), period?.totalTokens, 5, t('home.other'));
   if (rows.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'home-module-empty';
@@ -2755,7 +2755,8 @@ function renderHomeModelModule(period) {
     body.append(empty);
     return module;
   }
-  for (const row of rows) {
+  const percentages = homeOverviewApi.wholePercentages(rows.map((row) => row.share));
+  for (const [index, row] of rows.entries()) {
     const item = document.createElement('div');
     item.className = 'home-list-row home-model-row';
     const mark = document.createElement('span');
@@ -2768,7 +2769,7 @@ function renderHomeModelModule(period) {
     value.textContent = formatCompact(row.value);
     const share = document.createElement('span');
     share.className = 'home-list-aux';
-    share.textContent = formatPercent(row.share * 100);
+    share.textContent = `${percentages[index]}%`;
     item.append(mark, name, value, share);
     body.append(item);
   }

@@ -99,19 +99,46 @@
       .map(({ index: _index, ...account }) => account);
   }
 
-  function homeModelRows(rows, totalTokens, limit = 5) {
+  function homeModelRows(rows, totalTokens, limit = 5, otherName = 'Other') {
     const visible = (rows || []).slice(0, Math.max(0, Number(limit) || 0));
     const suppliedTotal = finiteNumber(totalTokens);
     const total = suppliedTotal != null && suppliedTotal > 0
       ? suppliedTotal
-      : visible.reduce((sum, row) => sum + Math.max(0, Number(row?.value || 0)), 0);
-    return visible.map((row) => ({
+      : (rows || []).reduce((sum, row) => sum + Math.max(0, Number(row?.value || 0)), 0);
+    const result = visible.map((row) => ({
       key: row.key || row.name || '',
       name: row.name || '',
       value: Math.max(0, Number(row.value || 0)),
       share: total > 0 ? Math.max(0, Number(row.value || 0)) / total : 0,
       color: row.color || ''
     }));
+    const visibleTotal = result.reduce((sum, row) => sum + row.value, 0);
+    const remainder = Math.max(0, total - visibleTotal);
+    if (remainder > 0) {
+      result.push({
+        key: '__other__',
+        name: otherName,
+        value: remainder,
+        share: total > 0 ? remainder / total : 0,
+        color: '#9aa0aa'
+      });
+    }
+    return result;
+  }
+
+  // Largest-remainder rounding keeps the compact integer labels honest: once
+  // the model list includes its Other bucket, the percentages visibly total 100.
+  function wholePercentages(shares) {
+    const values = (shares || []).map((share) => Math.max(0, Number(share) || 0) * 100);
+    const whole = values.map(Math.floor);
+    let remaining = Math.max(0, 100 - whole.reduce((sum, value) => sum + value, 0));
+    const order = values
+      .map((value, index) => ({ index, fraction: value - whole[index] }))
+      .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+    for (let index = 0; index < order.length && remaining > 0; index += 1, remaining -= 1) {
+      whole[order[index].index] += 1;
+    }
+    return whole;
   }
 
   function homeToolRows(rows, totalTokens, limit = 5) {
@@ -317,6 +344,7 @@
     homeLimitAccounts,
     homeLimitAccountsForProviders,
     homeModelRows,
+    wholePercentages,
     homeToolRows,
     homeDeviceRows,
     homeTrendSummary,

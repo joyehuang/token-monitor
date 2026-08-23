@@ -11,6 +11,7 @@ const {
   homeLimitAccounts,
   homeLimitAccountsForProviders,
   homeModelRows,
+  wholePercentages,
   homeToolRows,
   homeActivityWheelRoute,
   homeActivityScrollTarget,
@@ -183,6 +184,27 @@ test('homeModelRows returns one-line token shares without cost fields', () => {
     { key: 'gpt-5.5', name: 'gpt-5.5', value: 29_800_000, share: 29_800_000 / 63_800_000, color: '#49a3b0' }
   ]);
   assert.equal(Object.hasOwn(rows[0], 'cost'), false);
+});
+
+test('homeModelRows appends a localized Other row so visible shares cover the total', () => {
+  const source = [6, 5, 4, 3, 2, 1].map((value, index) => ({
+    key: `m${index + 1}`,
+    name: `Model ${index + 1}`,
+    value,
+    color: '#123456'
+  }));
+  const rows = homeModelRows(source, 24, 5, '其他');
+
+  assert.equal(rows.length, 6);
+  assert.deepEqual(rows.at(-1), {
+    key: '__other__',
+    name: '其他',
+    value: 4,
+    share: 4 / 24,
+    color: '#9aa0aa'
+  });
+  assert.equal(rows.reduce((sum, row) => sum + row.share, 0), 1);
+  assert.equal(wholePercentages(rows.map((row) => row.share)).reduce((sum, value) => sum + value, 0), 100);
 });
 
 test('homeToolRows returns top current-period tools with shares', () => {

@@ -684,6 +684,81 @@ test('mergeDeviceRecord clears prior history when incoming history is explicitly
   assert.deepEqual(merged.history, { daily: [], monthly: [], summary: {} });
 });
 
+test('mergeDeviceRecord reconstructs an omitted rolling week from daily history plus live today', () => {
+  const merged = mergeDeviceRecord(null, {
+    deviceId: 'upstream-mac',
+    updatedAt: '2026-08-23T10:00:00.000Z',
+    periodWindows: {
+      today: { key: '2026-08-23', endsAt: '2026-08-23T14:00:00.000Z' },
+      month: { key: '2026-08', endsAt: '2026-08-31T14:00:00.000Z' }
+    },
+    today: {
+      totalTokens: 10,
+      costUsd: 1,
+      clients: { codex: 10 },
+      clientCosts: { codex: 1 },
+      models: { 'gpt-live': 10 },
+      modelCosts: { 'gpt-live': 1 }
+    },
+    month: { totalTokens: 100 },
+    allTime: { totalTokens: 1000 },
+    history: {
+      daily: [
+        { date: '2026-08-16', tokens: 100, cost: 10, perClient: { claude: { tokens: 100, cost: 10 } }, perModel: { old: { tokens: 100, cost: 10 } } },
+        { date: '2026-08-18', tokens: 5, cost: 0.5, perClient: { claude: { tokens: 5, cost: 0.5 } }, perModel: { opus: { tokens: 5, cost: 0.5 } } },
+        { date: '2026-08-22', tokens: 7, cost: 0.7, perClient: { codex: { tokens: 7, cost: 0.7 } }, perModel: { gpt: { tokens: 7, cost: 0.7 } } },
+        // The live today period is authoritative; this interval snapshot is stale.
+        { date: '2026-08-23', tokens: 1, cost: 0.1, perClient: { codex: { tokens: 1, cost: 0.1 } }, perModel: { stale: { tokens: 1, cost: 0.1 } } }
+      ],
+      monthly: [],
+      summary: {}
+    }
+  });
+
+  assert.equal(merged.periods.week.totalTokens, 22);
+  assert.equal(merged.periods.week.costUsd, 2.2);
+  assert.deepEqual(merged.periods.week.clients, { claude: 5, codex: 17 });
+  assert.deepEqual(merged.periods.week.models, { opus: 5, gpt: 7, 'gpt-live': 10 });
+  assert.deepEqual(merged.periodWindows.week, merged.periodWindows.today);
+});
+
+test('mergeDeviceRecord uses today as the truthful lower bound when omitted week has no history', () => {
+  const merged = mergeDeviceRecord(null, {
+    deviceId: 'upstream-mac',
+    updatedAt: '2026-08-23T10:00:00.000Z',
+    today: { totalTokens: 60, clients: { claude: 60 }, models: { opus: 60 } },
+    month: { totalTokens: 600 },
+    allTime: { totalTokens: 6000 }
+  });
+
+  assert.equal(merged.periods.week.totalTokens, 60);
+  assert.deepEqual(merged.periods.week.clients, { claude: 60 });
+  assert.deepEqual(merged.periods.week.models, { opus: 60 });
+});
+
+test('mergeDeviceRecord applies the live today delta to a compatible omitted-week fallback', () => {
+  const existing = mergeDeviceRecord(null, {
+    deviceId: 'upstream-mac',
+    updatedAt: '2026-08-23T09:00:00.000Z',
+    periodWindows: { today: { key: '2026-08-23', endsAt: '2026-08-23T14:00:00.000Z' } },
+    today: { totalTokens: 10, clients: { codex: 10 } },
+    week: { totalTokens: 50, clients: { claude: 40, codex: 10 } },
+    month: { totalTokens: 100 },
+    allTime: { totalTokens: 1000 }
+  });
+  const merged = mergeDeviceRecord(existing, {
+    deviceId: 'upstream-mac',
+    updatedAt: '2026-08-23T10:00:00.000Z',
+    periodWindows: { today: { key: '2026-08-23', endsAt: '2026-08-23T14:00:00.000Z' } },
+    today: { totalTokens: 15, clients: { codex: 15 } },
+    month: { totalTokens: 105 },
+    allTime: { totalTokens: 1005 }
+  });
+
+  assert.equal(merged.periods.week.totalTokens, 55);
+  assert.deepEqual(merged.periods.week.clients, { claude: 40, codex: 15 });
+});
+
 test('aggregateHistory merges non-stale devices and skips stale ones', () => {
   const now = Date.parse('2026-06-07T12:00:00.000Z');
   const fresh = {

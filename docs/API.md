@@ -178,6 +178,8 @@ The hub normalizes records before storing them.
 
 `trackedClients` is optional but recommended for agents and widgets. When it is present, the hub treats omitted clients as intentionally not collected in this payload and preserves their previous usage for that device. This keeps "tracking" as "collect future data" rather than "hide existing history".
 
+`week` is the rolling seven-device-local-calendar-day window and is required for current fork agents/widgets. For compatibility with upstream clients that send only `today`/`month`/`allTime`, the hub reconstructs an omitted `week` from full daily `history` plus the live `today` period. Until history is available, it uses `today` as the truthful lower bound and applies later same-day deltas, so an omitted field can never make Week smaller than Today. An explicitly supplied `week` always remains authoritative.
+
 `periodWindows` is optional. Agents and widgets stamp each snapshot with the UTC instant its `today`/`week`/`month` windows end, computed in the device's own local time (`endsAt` = next local midnight for `today` and rolling `week`, next local month start for `month`; `key` is the device-local day/month reference). The hub uses it to expire a device's `today`/`week`/`month` from the aggregate once `now >= endsAt`, so a device that goes offline before re-posting does not keep contributing a stale day/week/month snapshot (`allTime` never expires). Payloads without `periodWindows` fall back to a UTC day/month comparison against `updatedAt`.
 
 `limits` is optional. Agents and widgets include it when AI Tool Limits detection is enabled. Raw OAuth credentials, access tokens, refresh tokens, and provider response bodies must never be sent.
