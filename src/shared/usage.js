@@ -309,6 +309,13 @@ function fillMissingWeek(existingRecord, incomingRecord) {
   }
 }
 
+function repairInvalidWeek(record) {
+  const today = record?.periods?.today;
+  const week = record?.periods?.week;
+  if (!today || !week || week.totalTokens >= today.totalTokens) return;
+  fillMissingWeek(null, record);
+}
+
 function detectModel(obj) {
   if (!obj || typeof obj !== 'object') return null;
   return normalizeModelName(obj.model || obj.modelName || obj.model_name || obj.deployment || obj.engine);
@@ -622,6 +629,12 @@ function normalizeDeviceRecord(record) {
     if (windows) normalized.periodWindows = windows;
   }
   for (const periodName of PERIODS) normalized.periods[periodName] = normalizePeriod(record[periodName] || record.periods?.[periodName]);
+  // Some compatible agents/hubs serialize an unsupported Week as an explicit
+  // empty period. Treat that as malformed rather than present: a seven-day
+  // window can never contain fewer tokens than its own Today window. Doing this
+  // during normalization also repairs already-aggregated responses from an
+  // older remote hub before the Electron renderer sees them.
+  repairInvalidWeek(normalized);
   return normalized;
 }
 

@@ -736,6 +736,39 @@ test('mergeDeviceRecord uses today as the truthful lower bound when omitted week
   assert.deepEqual(merged.periods.week.models, { opus: 60 });
 });
 
+test('normalizeDeviceRecord repairs an explicit Week that is smaller than Today', () => {
+  const normalized = normalizeDeviceRecord({
+    deviceId: 'broken-week-mac',
+    updatedAt: '2026-08-23T10:00:00.000Z',
+    today: { totalTokens: 90, clients: { codex: 90 }, models: { 'gpt-live': 90 } },
+    week: { totalTokens: 0 },
+    month: { totalTokens: 900 },
+    allTime: { totalTokens: 9000 }
+  });
+
+  assert.equal(normalized.periods.week.totalTokens, 90);
+  assert.deepEqual(normalized.periods.week.clients, { codex: 90 });
+  assert.deepEqual(normalized.periods.week.models, { 'gpt-live': 90 });
+});
+
+test('normalizeDeviceRecord rebuilds a malformed explicit Week from history when available', () => {
+  const normalized = normalizeDeviceRecord({
+    deviceId: 'broken-week-mac',
+    updatedAt: '2026-08-23T10:00:00.000Z',
+    periodWindows: { today: { key: '2026-08-23', endsAt: '2026-08-23T14:00:00.000Z' } },
+    today: { totalTokens: 90, clients: { codex: 90 } },
+    week: { totalTokens: 0 },
+    history: {
+      daily: [{ date: '2026-08-22', tokens: 10, perClient: { claude: { tokens: 10 } } }],
+      monthly: [],
+      summary: {}
+    }
+  });
+
+  assert.equal(normalized.periods.week.totalTokens, 100);
+  assert.deepEqual(normalized.periods.week.clients, { claude: 10, codex: 90 });
+});
+
 test('mergeDeviceRecord applies the live today delta to a compatible omitted-week fallback', () => {
   const existing = mergeDeviceRecord(null, {
     deviceId: 'upstream-mac',
