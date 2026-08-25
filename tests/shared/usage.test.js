@@ -684,12 +684,15 @@ test('mergeDeviceRecord clears prior history when incoming history is explicitly
   assert.deepEqual(merged.history, { daily: [], monthly: [], summary: {} });
 });
 
-test('mergeDeviceRecord reconstructs an omitted rolling week from daily history plus live today', () => {
+// The window is the device's calendar week, so history from before its Monday is
+// out even when it falls inside the last seven days (2026-08-23 is the Sunday
+// that closed the previous week).
+test('mergeDeviceRecord reconstructs an omitted week from this week daily history plus live today', () => {
   const merged = mergeDeviceRecord(null, {
     deviceId: 'upstream-mac',
-    updatedAt: '2026-08-23T10:00:00.000Z',
+    updatedAt: '2026-08-26T10:00:00.000Z',
     periodWindows: {
-      today: { key: '2026-08-23', endsAt: '2026-08-23T14:00:00.000Z' },
+      today: { key: '2026-08-26', endsAt: '2026-08-26T14:00:00.000Z' },
       month: { key: '2026-08', endsAt: '2026-08-31T14:00:00.000Z' }
     },
     today: {
@@ -704,11 +707,13 @@ test('mergeDeviceRecord reconstructs an omitted rolling week from daily history 
     allTime: { totalTokens: 1000 },
     history: {
       daily: [
-        { date: '2026-08-16', tokens: 100, cost: 10, perClient: { claude: { tokens: 100, cost: 10 } }, perModel: { old: { tokens: 100, cost: 10 } } },
-        { date: '2026-08-18', tokens: 5, cost: 0.5, perClient: { claude: { tokens: 5, cost: 0.5 } }, perModel: { opus: { tokens: 5, cost: 0.5 } } },
-        { date: '2026-08-22', tokens: 7, cost: 0.7, perClient: { codex: { tokens: 7, cost: 0.7 } }, perModel: { gpt: { tokens: 7, cost: 0.7 } } },
+        { date: '2026-08-19', tokens: 100, cost: 10, perClient: { claude: { tokens: 100, cost: 10 } }, perModel: { old: { tokens: 100, cost: 10 } } },
+        // Sunday 08-23 is inside the last seven days but belongs to the previous week.
+        { date: '2026-08-23', tokens: 100, cost: 10, perClient: { claude: { tokens: 100, cost: 10 } }, perModel: { old: { tokens: 100, cost: 10 } } },
+        { date: '2026-08-24', tokens: 5, cost: 0.5, perClient: { claude: { tokens: 5, cost: 0.5 } }, perModel: { opus: { tokens: 5, cost: 0.5 } } },
+        { date: '2026-08-25', tokens: 7, cost: 0.7, perClient: { codex: { tokens: 7, cost: 0.7 } }, perModel: { gpt: { tokens: 7, cost: 0.7 } } },
         // The live today period is authoritative; this interval snapshot is stale.
-        { date: '2026-08-23', tokens: 1, cost: 0.1, perClient: { codex: { tokens: 1, cost: 0.1 } }, perModel: { stale: { tokens: 1, cost: 0.1 } } }
+        { date: '2026-08-26', tokens: 1, cost: 0.1, perClient: { codex: { tokens: 1, cost: 0.1 } }, perModel: { stale: { tokens: 1, cost: 0.1 } } }
       ],
       monthly: [],
       summary: {}
@@ -719,7 +724,9 @@ test('mergeDeviceRecord reconstructs an omitted rolling week from daily history 
   assert.equal(merged.periods.week.costUsd, 2.2);
   assert.deepEqual(merged.periods.week.clients, { claude: 5, codex: 17 });
   assert.deepEqual(merged.periods.week.models, { opus: 5, gpt: 7, 'gpt-live': 10 });
-  assert.deepEqual(merged.periodWindows.week, merged.periodWindows.today);
+  // Derived from today's window, but ending on the device's next local Monday —
+  // reusing today's endsAt would expire the week every midnight.
+  assert.deepEqual(merged.periodWindows.week, { key: '2026-08-24', endsAt: '2026-08-30T14:00:00.000Z' });
 });
 
 test('mergeDeviceRecord uses today as the truthful lower bound when omitted week has no history', () => {
@@ -956,6 +963,23 @@ test('aggregateDevices keeps today across UTC midnight when device local day is 
   const aggregate = aggregateDevices([device], 10 * 60 * 1000, Date.parse('2026-06-27T02:00:00.000Z'));
   assert.equal(aggregate.periods.today.totalTokens, 123);
   assert.equal(aggregate.periods.week.totalTokens, 456);
+});
+
+// The week fallback compares calendar weeks, not days: an agent that posted on
+// Monday and went quiet still belongs to the week that is running on Friday.
+test('aggregateDevices keeps a week snapshot from earlier in the same calendar week', () => {
+  const same = aggregateDevices([{
+    deviceId: 'quiet-mac', updatedAt: '2026-06-22T05:00:00.000Z', receivedAt: '2026-06-22T05:00:00.000Z',
+    today: { totalTokens: 11 }, week: { totalTokens: 22 }
+  }], 10 * 60 * 1000, Date.parse('2026-06-26T05:00:00.000Z')); // Mon 06-22 snapshot, now Fri 06-26
+  assert.equal(same.periods.today.totalTokens, 0, 'the day has rolled over');
+  assert.equal(same.periods.week.totalTokens, 22, 'the week has not');
+
+  const previous = aggregateDevices([{
+    deviceId: 'quiet-mac-2', updatedAt: '2026-06-21T05:00:00.000Z', receivedAt: '2026-06-21T05:00:00.000Z',
+    today: { totalTokens: 11 }, week: { totalTokens: 22 }
+  }], 10 * 60 * 1000, Date.parse('2026-06-22T05:00:00.000Z')); // Sun 06-21 snapshot, now Mon 06-22
+  assert.equal(previous.periods.week.totalTokens, 0, 'Monday starts a new week');
 });
 
 test('aggregateDevices falls back to UTC-day compare for old agents without periodWindows', () => {

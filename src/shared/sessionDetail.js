@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const { resolveSessionFiles } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
+const { startOfLocalWeek } = require('./usage');
 
 function num(value) {
   const n = Number(value);
@@ -262,8 +263,9 @@ function withinPeriod(timestamp, period, now) {
   const date = new Date(timestamp || '');
   if (Number.isNaN(date.getTime())) return false;
   if (period === 'week') {
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+    // Calendar week starting Monday, matching the `week` period everywhere else.
+    const start = startOfLocalWeek(now);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7, 0, 0, 0, 0);
     return date >= start && date < end;
   }
   if (period === 'today') {

@@ -17,7 +17,7 @@ const {
   configFingerprint,
   collectUsageOnce,
   localTodayKey,
-  rollingWeekSince
+  weekStartKey
 } = require('../../src/shared/collector');
 
 const { emptyPeriod } = require('../../src/shared/usage');
@@ -37,7 +37,7 @@ test('configFingerprint normalizes clients and includes allTimeSince', () => {
   const b = configFingerprint('claude,codex', '2024-01-01');
   // whitespace-normalised to the same value
   assert.equal(a, b, 'whitespace should be normalized');
-  assert.equal(a, 'claude,codex|2024-01-01|rolling-week-v1');
+  assert.equal(a, 'claude,codex|2024-01-01|monday-week-v1');
 
   const c = configFingerprint('claude', '2024-01-01');
   assert.notEqual(a, c, 'different clients should differ');
@@ -48,18 +48,19 @@ test('configFingerprint normalizes clients and includes allTimeSince', () => {
 
 test('configFingerprint handles undefined and empty clients', () => {
   const a = configFingerprint(undefined, '2024-01-01');
-  assert.equal(a, '|2024-01-01|rolling-week-v1', 'undefined clients should produce empty string before pipe');
+  assert.equal(a, '|2024-01-01|monday-week-v1', 'undefined clients should produce empty string before pipe');
 
   const b = configFingerprint('', '2024-01-01');
-  assert.equal(b, '|2024-01-01|rolling-week-v1', 'empty clients should produce same as undefined');
+  assert.equal(b, '|2024-01-01|monday-week-v1', 'empty clients should produce same as undefined');
 
   const c = configFingerprint('claude', undefined);
-  assert.equal(c, 'claude|undefined|rolling-week-v1', 'undefined allTimeSince produces string "undefined"');
+  assert.equal(c, 'claude|undefined|monday-week-v1', 'undefined allTimeSince produces string "undefined"');
 });
 
-test('rollingWeekSince includes today and the previous six local calendar days', () => {
-  assert.equal(rollingWeekSince(new Date(2026, 7, 23, 23, 30)), '2026-08-17');
-  assert.equal(rollingWeekSince(new Date(2026, 0, 3, 0, 30)), '2025-12-28');
+test('weekStartKey resolves to the local Monday, including across a year boundary', () => {
+  assert.equal(weekStartKey(new Date(2026, 7, 23, 23, 30)), '2026-08-17'); // Sunday belongs to the week that opened Monday
+  assert.equal(weekStartKey(new Date(2026, 7, 24, 0, 30)), '2026-08-24'); // Monday opens its own week
+  assert.equal(weekStartKey(new Date(2026, 0, 3, 0, 30)), '2025-12-29');
 });
 
 test('anchored tick with valid anchor runs todayOnly scan and derives week/month/allTime', async () => {

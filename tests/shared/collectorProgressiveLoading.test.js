@@ -17,7 +17,7 @@ async function sequentialTokscale({ flags } = {}) {
     return { entries: [{ client: 'claude', sessionId: 's1', model: 'claude-opus-4-8', input: 100, output: 5, cost: 1 }] };
   }
   if (calls === 2) {
-    // rolling seven days via --since
+    // the calendar week via --since <Monday>
     return { entries: [
       { client: 'claude', sessionId: 's1', model: 'claude-opus-4-8', input: 300, output: 10, cost: 3 },
       { client: 'claude', sessionId: 's2', model: 'claude-sonnet-4-8', input: 100, output: 5, cost: 0.5 }
@@ -79,7 +79,7 @@ test('progressive loading fires onProgress after each period scan', async () => 
   assert.equal(summary.week.totalTokens, 415, 'final week');
   assert.equal(summary.month.totalTokens, 730, 'final month');
   assert.equal(summary.allTime.totalTokens, 2930, 'final allTime');
-  assert.deepEqual(seenFlags[1], ['--since', '2026-06-25'], 'week scan should use a rolling local seven-day boundary');
+  assert.deepEqual(seenFlags[1], ['--since', '2026-06-29'], 'week scan should start at the local Monday of the collected week');
 });
 
 test('progressive loading skips onProgress on anchored ticks', async () => {

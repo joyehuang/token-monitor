@@ -199,13 +199,13 @@ test('filterExchangesByPeriod keeps only in-period turns and drops empties', () 
   assert.equal(all.length, 2);
 });
 
-test('filterExchangesByPeriod treats week as the rolling local 7-day window', () => {
-  const now = new Date(2026, 4, 30, 12, 0, 0);
+test('filterExchangesByPeriod treats week as the local calendar week from Monday', () => {
+  const now = new Date(2026, 4, 30, 12, 0, 0); // Saturday 2026-05-30, week opened Monday 05-25
   const ex = groupEvents([
-    { kind: 'prompt', timestamp: new Date(2026, 4, 23, 23, 59, 59).toISOString(), text: 'old' },
-    turn(new Date(2026, 4, 23, 23, 59, 59).toISOString(), 900),
-    { kind: 'prompt', timestamp: new Date(2026, 4, 24, 0, 0, 0).toISOString(), text: 'edge' },
-    turn(new Date(2026, 4, 24, 0, 0, 0).toISOString(), 100),
+    { kind: 'prompt', timestamp: new Date(2026, 4, 24, 23, 59, 59).toISOString(), text: 'sunday-before' },
+    turn(new Date(2026, 4, 24, 23, 59, 59).toISOString(), 900),
+    { kind: 'prompt', timestamp: new Date(2026, 4, 25, 0, 0, 0).toISOString(), text: 'monday-edge' },
+    turn(new Date(2026, 4, 25, 0, 0, 0).toISOString(), 100),
     { kind: 'prompt', timestamp: new Date(2026, 4, 30, 6, 0, 0).toISOString(), text: 'today' },
     turn(new Date(2026, 4, 30, 6, 0, 0).toISOString(), 50)
   ]);

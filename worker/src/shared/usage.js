@@ -204,6 +204,28 @@ function utcDayKey(date) {
   return `${utcMonthKey(date)}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
 
+// Weeks are calendar weeks starting Monday (ISO-8601), so `week` is a calendar
+// window like `month` rather than one that shifts every day. A week is keyed by
+// its own Monday in YYYY-MM-DD form: it sorts like the day key, survives a year
+// boundary that splits a week, and needs none of the ISO week-number rules.
+function startOfLocalWeek(date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  return start;
+}
+
+function localWeekKey(date = new Date()) {
+  const start = startOfLocalWeek(date);
+  const month = String(start.getMonth() + 1).padStart(2, '0');
+  return `${start.getFullYear()}-${month}-${String(start.getDate()).padStart(2, '0')}`;
+}
+
+function utcWeekKey(date) {
+  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
+  return utcDayKey(start);
+}
+
 function addDaysToDayKey(key, delta) {
   const ms = Date.parse(`${String(key || '').slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(ms)) return '';
@@ -211,8 +233,8 @@ function addDaysToDayKey(key, delta) {
 }
 
 // today/week/month are wall-clock windows: the device stamps each with the UTC
-// instant it ends (next local midnight for day/week, next local month start for
-// month, computed in the device's own timezone). The hub expires a frozen
+// instant it ends (next local midnight for day, next local Monday for week, next
+// local month start for month, computed in the device's own timezone). The hub expires a frozen
 // snapshot with nowMs >= endsAt so stale windows stop counting once they roll
 // over.
 const WINDOW_PERIODS = ['today', 'week', 'month'];
@@ -231,6 +253,15 @@ function normalizePeriodWindows(value) {
   return Object.keys(result).length ? result : null;
 }
 
+// The Monday of the week holding a device-local YYYY-MM-DD day key. String in,
+// string out: the key is already in the device's local time, so resolving it
+// through the hub's own timezone would move the boundary.
+function weekStartFromDayKey(key) {
+  const ms = Date.parse(`${String(key || '').slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return '';
+  return addDaysToDayKey(key, -((new Date(ms).getUTCDay() + 6) % 7));
+}
+
 function hasPeriodPayload(record, periodName) {
   return hasOwn(record, periodName) || hasOwn(record?.periods, periodName);
 }
@@ -243,9 +274,9 @@ function recordLocalDayKey(record) {
 }
 
 // Newer upstream clients currently post today/month/allTime without the fork's
-// rolling `week` field. Build the missing window from the device's full daily
-// history when available, replacing history's possibly stale current-day bucket
-// with the live `today` period. History has client/model attribution (but not
+// `week` field. Build the missing window from the device's full daily history
+// when available, replacing history's possibly stale current-day bucket with the
+// live `today` period. History has client/model attribution (but not
 // sessions), which is enough for the hub's aggregate model/tool/home breakdowns.
 function historyDayPeriod(day) {
   const period = emptyPeriod();
@@ -275,7 +306,7 @@ function deriveMissingWeek(existingRecord, incomingRecord) {
   const todayKey = recordLocalDayKey(incomingRecord);
   const daily = coerceHistory(incomingRecord?.history).daily;
   if (todayKey && daily.length > 0) {
-    const cutoff = addDaysToDayKey(todayKey, -6);
+    const cutoff = weekStartFromDayKey(todayKey);
     const week = emptyPeriod();
     for (const day of daily) {
       const key = String(day?.date || '').slice(0, 10);
@@ -286,7 +317,8 @@ function deriveMissingWeek(existingRecord, incomingRecord) {
   }
 
   // History is interval-gated. Once a compatible fallback has been stored,
-  // preserve its prior six days and apply only today's live delta between posts.
+  // preserve the earlier days of the week and apply only today's live delta
+  // between posts.
   const existingToday = normalizePeriod(existingRecord?.periods?.today);
   const existingWeek = normalizePeriod(existingRecord?.periods?.week);
   const sameDay = todayKey && todayKey === recordLocalDayKey(existingRecord);
@@ -297,18 +329,29 @@ function deriveMissingWeek(existingRecord, incomingRecord) {
 
   // There is no exact way to infer previous days from only today/month/allTime.
   // Today is the truthful lower bound and, unlike an empty normalized period,
-  // preserves the invariant that a rolling week can never be smaller than today.
+  // preserves the invariant that a week can never be smaller than its own today.
   return today;
+}
+
+// The derived week needs its own window: reusing today's would expire it at the
+// device's next local midnight, dropping the device from the aggregate for the
+// rest of a week that is still running. today.endsAt is that device's next local
+// midnight, so the week ends that many days later plus the rest of the week.
+function weekWindowFromTodayWindow(todayWindow) {
+  const dayKey = String(todayWindow?.key || '').slice(0, 10);
+  const weekKey = weekStartFromDayKey(dayKey);
+  const endsAtMs = Date.parse(String(todayWindow?.endsAt || ''));
+  if (!weekKey || !Number.isFinite(endsAtMs)) return null;
+  const daysLeft = 6 - Math.round((Date.parse(`${dayKey}T00:00:00Z`) - Date.parse(`${weekKey}T00:00:00Z`)) / 86400000);
+  return { key: weekKey, endsAt: new Date(endsAtMs + daysLeft * 86400000).toISOString() };
 }
 
 function fillMissingWeek(existingRecord, incomingRecord) {
   incomingRecord.periods.week = deriveMissingWeek(existingRecord, incomingRecord);
   const todayWindow = incomingRecord.periodWindows?.today;
   if (todayWindow && !incomingRecord.periodWindows?.week) {
-    incomingRecord.periodWindows = {
-      ...incomingRecord.periodWindows,
-      week: { ...todayWindow }
-    };
+    const week = weekWindowFromTodayWindow(todayWindow);
+    if (week) incomingRecord.periodWindows = { ...incomingRecord.periodWindows, week };
   }
 }
 
@@ -633,8 +676,8 @@ function normalizeDeviceRecord(record) {
   }
   for (const periodName of PERIODS) normalized.periods[periodName] = normalizePeriod(record[periodName] || record.periods?.[periodName]);
   // Some compatible agents/hubs serialize an unsupported Week as an explicit
-  // empty period. Treat that as malformed rather than present: a seven-day
-  // window can never contain fewer tokens than its own Today window. Doing this
+  // empty period. Treat that as malformed rather than present: the week window
+  // contains its own Today, so it can never hold fewer tokens. Doing this
   // during normalization also repairs already-aggregated responses from an
   // older remote hub before the Electron renderer sees them.
   repairInvalidWeek(normalized);
@@ -667,7 +710,7 @@ function shouldPreservePeriod(periodName, existingRecord, incomingRecord) {
   const incomingDate = recordDate(incomingRecord);
   if (!existingDate || !incomingDate) return false;
   if (periodName === 'today') return utcDayKey(existingDate) === utcDayKey(incomingDate);
-  if (periodName === 'week') return utcDayKey(existingDate) === utcDayKey(incomingDate);
+  if (periodName === 'week') return utcWeekKey(existingDate) === utcWeekKey(incomingDate);
   if (periodName === 'month') return utcMonthKey(existingDate) === utcMonthKey(incomingDate);
   return false;
 }
@@ -847,7 +890,7 @@ function mergePeriods(...periods) {
 // True when a device's today/week/month snapshot belongs to a window that has
 // already ended, so it must not be summed into the live aggregate. Uses the
 // device-local endsAt when present; old agents without periodWindows fall back
-// to a best-effort UTC day/month comparison against the snapshot timestamp.
+// to a best-effort UTC day/week/month comparison against the snapshot timestamp.
 // allTime is cumulative and never expires.
 function isPeriodExpired(record, periodName, nowMs) {
   if (periodName === 'allTime') return false;
@@ -860,7 +903,7 @@ function isPeriodExpired(record, periodName, nowMs) {
   if (!recordedAt) return false;
   const nowDate = new Date(nowMs);
   if (periodName === 'today') return utcDayKey(recordedAt) !== utcDayKey(nowDate);
-  if (periodName === 'week') return utcDayKey(recordedAt) !== utcDayKey(nowDate);
+  if (periodName === 'week') return utcWeekKey(recordedAt) !== utcWeekKey(nowDate);
   if (periodName === 'month') return utcMonthKey(recordedAt) !== utcMonthKey(nowDate);
   return false;
 }
@@ -963,4 +1006,4 @@ function deltaValue(base, fresh, anchor, key) {
   return base ?? fresh;
 }
 
-module.exports = { PERIODS, addPeriodInto, aggregateDevices, aggregateHistory, applyPeriodDelta, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, mergeDeviceRecord, mergePeriods, normalizeDeviceRecord, normalizePeriod };
+module.exports = { PERIODS, addPeriodInto, aggregateDevices, aggregateHistory, applyPeriodDelta, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, localWeekKey, mergeDeviceRecord, mergePeriods, normalizeDeviceRecord, normalizePeriod, startOfLocalWeek, utcWeekKey };

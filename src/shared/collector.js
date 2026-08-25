@@ -10,7 +10,7 @@ const { readJson, sharedDataDir, writeJsonAtomic } = require('./config');
 const { appVersion } = require('./appVersion');
 const { normalizeClientsCsv } = require('./clientTracking');
 const { tokscalePackageNameForPlatform, tokscalePlatformKey } = require('./tokscalePlatform');
-const { applyPeriodDelta, emptyPeriod, extractUsageFromTokscale, mergePeriods } = require('./usage');
+const { applyPeriodDelta, emptyPeriod, extractUsageFromTokscale, localWeekKey, mergePeriods, startOfLocalWeek } = require('./usage');
 const { collectWslUsage: collectWslUsageImpl, emptyWslBundle, probeWslState: probeWslStateImpl } = require('./wslUsage');
 const { hermesProfileWatchDirs, resolveHermesHome } = require('./hermesProfiles');
 const { parseGraphResult, normalizeHistory } = require('./history');
@@ -149,23 +149,25 @@ function localTodayKey(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
-// Tokscale's --week is the current calendar week, not a rolling seven-day
-// window. The product's Week means today plus the previous six local calendar
-// days, so express that boundary explicitly through --since.
-function rollingWeekSince(date = new Date()) {
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 6);
-  return localTodayKey(start);
+// Week is the local calendar week starting Monday, like Month is the calendar
+// month — tokscale's own --week is its rolling last-7-days window, so the
+// boundary is expressed explicitly through --since instead.
+function weekStartKey(date = new Date()) {
+  return localWeekKey(date);
 }
 
 // Stamp each posted snapshot with the UTC instant its today/week/month windows
-// end. The rolling week advances at local midnight just like `today`.
+// end. The week ends at the next local Monday midnight, so unlike `today` it
+// survives a date change inside the same week.
 function computePeriodWindows(now = new Date()) {
   const startOfNextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  const startOfNextWeek = startOfLocalWeek(now);
+  startOfNextWeek.setDate(startOfNextWeek.getDate() + 7);
   const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   return {
     today: { key: localTodayKey(now), endsAt: startOfNextDay.toISOString() },
-    week: { key: localTodayKey(now), endsAt: startOfNextDay.toISOString() },
+    week: { key: localWeekKey(now), endsAt: startOfNextWeek.toISOString() },
     month: { key: monthKey, endsAt: startOfNextMonth.toISOString() }
   };
 }
@@ -389,7 +391,7 @@ async function collectUsageOnce(options) {
   // straddles local midnight cannot pair a day-N today scan with a day-N+1
   // window (issue #37 follow-up). Injectable for tests.
   const collectedAt = options.now != null ? new Date(options.now) : new Date();
-  const weekSince = rollingWeekSince(collectedAt);
+  const weekSince = weekStartKey(collectedAt);
   const runTokscaleFn = options.runTokscale || runTokscale;
   const collectWsl = options.collectWslUsage || collectWslUsageImpl;
   const probeWslStateFn = options.probeWslState || probeWslStateImpl;
@@ -743,9 +745,10 @@ function wslPeriodsForPreview(wslAnchor, anchorDateKey, todayKey) {
 
 function configFingerprint(clientsCsv, allTimeSince) {
   // Deterministic string that captures the config inputs anchor correctness
-  // depends on. The semantics suffix invalidates anchors written when Week used
-  // tokscale's calendar --week instead of the rolling seven-day --since window.
-  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}|rolling-week-v1`;
+  // depends on. The semantics suffix invalidates anchors written under an older
+  // Week definition (tokscale's calendar --week, then a rolling seven-day
+  // --since window) — bump it whenever the window itself changes.
+  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}|monday-week-v1`;
 }
 
 // Force a full scan at least this often even when the anchor is otherwise
@@ -1087,7 +1090,7 @@ module.exports = {
   HISTORY_INTERVAL_VALUES,
   localTodayKey,
   normalizeHistoryIntervalMs,
-  rollingWeekSince,
+  weekStartKey,
   sessionTimestampMap,
   locateBundledBinary,
   lookupModelPricing,
