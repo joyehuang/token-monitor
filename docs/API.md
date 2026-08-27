@@ -39,6 +39,13 @@ Example response:
 
 Posts one device usage summary.
 
+The Node hub accepts a body up to 4 MB and answers `413 payload_too_large` above
+that. `periods.*.sessions` is the only part of the payload that grows without
+bound (one entry per conversation, kept forever in `allTime`), so senders cap it
+at the 500 most recently used sessions per period. Every total is stored beside
+`sessions` rather than derived from it, so the cap never changes a reported
+number — only the tail of the session list is omitted.
+
 Example payload:
 
 ```json

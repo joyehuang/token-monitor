@@ -59,7 +59,7 @@ const {
   normalizeArchivedClientUsage,
   pruneArchivedClientUsage
 } = require('../shared/clientUsageArchive');
-const { aggregateDevices, aggregateHistory, carryDeviceHistory } = require('../shared/usage');
+const { aggregateDevices, aggregateHistory, carryDeviceHistory, summaryForWire } = require('../shared/usage');
 const { syncLimits } = require('../shared/limits');
 const { historyPreview } = require('../shared/history');
 const { readSessionDetail } = require('../shared/sessionDetail');
@@ -1279,12 +1279,21 @@ async function postToHub(summary) {
     catch (error) { console.log(`[sync] cleanup of old deviceId ${stale} failed: ${error.message}`); }
   }
   const url = `${hubUrl.replace(/\/$/, '')}/api/ingest`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
-    body: JSON.stringify({ ...summary, limits: syncLimits(summary.limits) })
-  });
-  if (!response.ok) throw new Error(`Hub ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  const body = JSON.stringify({ ...summaryForWire(summary), limits: syncLimits(summary.limits) });
+  // Carry the payload size into every failure: an oversized body used to
+  // surface only as a bare "fetch failed", which gave no hint of the cause.
+  const bodyBytes = Buffer.byteLength(body);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
+      body
+    });
+  } catch (error) {
+    throw new Error(`${error.message} (${bodyBytes} byte payload)`, { cause: error });
+  }
+  if (!response.ok) throw new Error(`Hub ${response.status} (${bodyBytes} byte payload): ${(await response.text()).slice(0, 200)}`);
   if (settings.lastPostedDeviceId !== summary.deviceId) {
     settings.lastPostedDeviceId = summary.deviceId;
     saveSettings();

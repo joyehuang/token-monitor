@@ -461,6 +461,44 @@ function addSession(period, session) {
   mergeSession(period.sessions[key], session);
 }
 
+// `sessions` is the only period field that grows without bound — one entry per
+// conversation, kept forever in allTime — so it is what eventually pushes an
+// ingest body past the hub's size cap and takes the device offline. Cap it on
+// the wire, keeping the most recently used sessions. Every total the dashboard
+// shows (totalTokens/clients/models/...) is stored beside `sessions` rather
+// than derived from it, so dropping entries never changes a number; only the
+// tail of the session list is lost. Trim at the post boundary only — the
+// collector's own state must stay complete for applyPeriodDelta() to hold.
+const MAX_WIRE_SESSIONS_PER_PERIOD = 500;
+
+function sessionRecency(session) {
+  return timestampMs(session?.lastUsedAt) || timestampMs(session?.startedAt) || 0;
+}
+
+function trimPeriodSessions(period, maxSessions = MAX_WIRE_SESSIONS_PER_PERIOD) {
+  const sessions = period?.sessions;
+  if (!sessions || typeof sessions !== 'object') return period;
+  const keys = Object.keys(sessions);
+  if (keys.length <= maxSessions) return period;
+  const kept = {};
+  for (const key of keys.sort((a, b) => (
+    sessionRecency(sessions[b]) - sessionRecency(sessions[a])
+    || asNumber(sessions[b]?.totalTokens) - asNumber(sessions[a]?.totalTokens)
+    || (a < b ? -1 : 1)
+  )).slice(0, maxSessions)) kept[key] = sessions[key];
+  return { ...period, sessions: kept };
+}
+
+// Shape a collector summary for the wire. Structural clone of the periods it
+// touches, so the caller's own summary object is left untouched.
+function summaryForWire(summary, maxSessions = MAX_WIRE_SESSIONS_PER_PERIOD) {
+  const wire = { ...summary };
+  for (const periodName of PERIODS) {
+    if (wire[periodName]) wire[periodName] = trimPeriodSessions(wire[periodName], maxSessions);
+  }
+  return wire;
+}
+
 function sessionFromRow(row) {
   const client = detectClient(row);
   const id = detectSessionId(row);
@@ -1003,4 +1041,4 @@ function deltaValue(base, fresh, anchor, key) {
   return base ?? fresh;
 }
 
-module.exports = { PERIODS, addPeriodInto, aggregateDevices, aggregateHistory, applyPeriodDelta, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, localWeekKey, mergeDeviceRecord, mergePeriods, normalizeDeviceRecord, normalizePeriod, startOfLocalWeek, utcWeekKey };
+module.exports = { MAX_WIRE_SESSIONS_PER_PERIOD, PERIODS, addPeriodInto, aggregateDevices, aggregateHistory, applyPeriodDelta, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, localWeekKey, mergeDeviceRecord, mergePeriods, normalizeDeviceRecord, normalizePeriod, startOfLocalWeek, summaryForWire, trimPeriodSessions, utcWeekKey };

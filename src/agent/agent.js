@@ -8,6 +8,7 @@ const { clientsCsvForSetting } = require('../shared/clientTracking');
 const { collectUsageOnce, normalizeHistoryIntervalMs, startCollector } = require('../shared/collector');
 const { normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders } = require('../shared/limitCollector');
 const { syncLimits } = require('../shared/limits');
+const { summaryForWire } = require('../shared/usage');
 
 loadDotEnv();
 const args = parseArgs(process.argv.slice(2));
@@ -32,13 +33,21 @@ const dryRun = Boolean(args['dry-run'] || args.dryRun);
 const collectorOptions = { clients, allTimeSince, commandTimeoutMs, deviceId, agentVersion: appVersion(), agentRuntime: 'headless-agent', historyEnabled, historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS), limitsEnabled, limitProviders, limitsRefreshMs, wslScanEnabled, opencodeCookie };
 
 async function postUsage(summary) {
-  const payload = { ...summary, limits: syncLimits(summary.limits) };
-  const response = await fetch(`${hubUrl}/api/ingest`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) throw new Error(`Hub responded ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  const body = JSON.stringify({ ...summaryForWire(summary), limits: syncLimits(summary.limits) });
+  // Carry the payload size into every failure: an oversized body used to
+  // surface only as a bare "fetch failed", which gave no hint of the cause.
+  const bodyBytes = Buffer.byteLength(body);
+  let response;
+  try {
+    response = await fetch(`${hubUrl}/api/ingest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
+      body
+    });
+  } catch (error) {
+    throw new Error(`${error.message} (${bodyBytes} byte payload)`, { cause: error });
+  }
+  if (!response.ok) throw new Error(`Hub responded ${response.status} (${bodyBytes} byte payload): ${(await response.text()).slice(0, 300)}`);
   return response.json();
 }
 
