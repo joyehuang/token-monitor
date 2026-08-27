@@ -27,18 +27,47 @@ function sendText(res, statusCode, body, contentType = 'text/plain; charset=utf-
   res.end(body);
 }
 
-function readJsonBody(req, maxBytes = 1024 * 256) {
+// An ingest body carries per-session detail for four periods, so it is
+// routinely hundreds of KB and grows with the device's history. The old 256 KB
+// cap silently killed long-lived devices: once a device crossed it the hub
+// destroyed the socket before writing a response, so the client saw an opaque
+// network failure rather than a size error and just stopped appearing.
+const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024;
+// On overflow, keep draining up to this multiple of the cap so the sender can
+// finish its upload and actually read the 413. Past it the sender is ignoring
+// us and the socket does get cut.
+const OVERFLOW_DRAIN_FACTOR = 4;
+
+function bodyTooLargeError(bytes, maxBytes, socketDestroyed) {
+  const error = new Error(`Request body too large: ${bytes} bytes exceeds the ${maxBytes} byte limit`);
+  error.statusCode = 413;
+  error.socketDestroyed = socketDestroyed;
+  return error;
+}
+
+function readJsonBody(req, maxBytes = DEFAULT_MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let bytes = 0;
+    let tooLarge = false;
     req.setEncoding('utf8');
     req.on('data', (chunk) => {
-      body += chunk;
-      if (body.length > maxBytes) {
-        reject(new Error('Request body too large'));
+      bytes += Buffer.byteLength(chunk, 'utf8');
+      if (!tooLarge && bytes > maxBytes) {
+        tooLarge = true;
+        body = '';
+      }
+      if (!tooLarge) {
+        body += chunk;
+        return;
+      }
+      if (bytes > maxBytes * OVERFLOW_DRAIN_FACTOR) {
+        reject(bodyTooLargeError(bytes, maxBytes, true));
         req.destroy();
       }
     });
     req.on('end', () => {
+      if (tooLarge) return reject(bodyTooLargeError(bytes, maxBytes, false));
       if (!body.trim()) return resolve({});
       try { resolve(JSON.parse(body)); }
       catch (error) { reject(new Error(`Invalid JSON body: ${error.message}`)); }
@@ -58,4 +87,4 @@ function isAuthorized(req, expectedSecret) {
   return requestSecret(req) === expectedSecret;
 }
 
-module.exports = { isAuthorized, readJsonBody, sendJson, sendText };
+module.exports = { DEFAULT_MAX_BODY_BYTES, isAuthorized, readJsonBody, sendJson, sendText };

@@ -138,6 +138,13 @@ function createHub({
         return sendJson(res, 200, { ok: true, deviceId: record.deviceId, stats: getStats() });
       } catch (error) {
         if (error.message === 'deviceId_required') return sendJson(res, 400, { error: 'deviceId_required' });
+        if (error.statusCode === 413) {
+          (logger.log || console.log)(`[hub] rejected oversized ingest: ${error.message}`);
+          // The socket is already gone in the runaway-sender case, so writing a
+          // response would only throw.
+          if (error.socketDestroyed) return;
+          return sendJson(res, 413, { error: 'payload_too_large', message: error.message });
+        }
         return sendJson(res, 400, { error: 'bad_request', message: error.message });
       }
     }

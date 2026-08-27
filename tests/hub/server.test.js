@@ -84,3 +84,52 @@ test('onStats fires on ingest and on deleteDevice, and unsubscribe stops it', ()
     fs.rmSync(dataFile, { force: true });
   }
 });
+
+// A device whose ingest body outgrew the old 256 KB cap went silent: the hub
+// destroyed the socket before writing a response, so the client only ever saw
+// an opaque network error. Large bodies must be accepted, and an oversized one
+// must come back as a readable 413.
+test('the hub accepts an ingest body far larger than the old 256 KB cap', async () => {
+  const dataFile = tempDataFile();
+  const hub = createHub({ port: 0, host: '127.0.0.1', secret: '', dataFile, logger: { error() {}, log() {} } });
+  await hub.start();
+  try {
+    const sessions = {};
+    for (let i = 0; i < 4000; i += 1) {
+      sessions[`claude:session-${i}`] = { client: 'claude', sessionId: `session-${i}`, totalTokens: 10, lastUsedAt: '2026-08-27T00:00:00.000Z' };
+    }
+    const body = JSON.stringify({ deviceId: 'big-device', allTime: { totalTokens: 20000, sessions } });
+    assert.ok(body.length > 256 * 1024, `expected a body over the old cap, got ${body.length}`);
+    const { port } = hub.server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/ingest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body
+    });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.deviceId, 'big-device');
+  } finally {
+    await hub.stop();
+    fs.rmSync(dataFile, { force: true });
+  }
+});
+
+test('an ingest body past the cap answers 413 instead of dropping the connection', async () => {
+  const dataFile = tempDataFile();
+  const hub = createHub({ port: 0, host: '127.0.0.1', secret: '', dataFile, logger: { error() {}, log() {} } });
+  await hub.start();
+  try {
+    const { port } = hub.server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/ingest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'huge-device', filler: 'x'.repeat(5 * 1024 * 1024) })
+    });
+    assert.equal(response.status, 413);
+    assert.equal((await response.json()).error, 'payload_too_large');
+  } finally {
+    await hub.stop();
+    fs.rmSync(dataFile, { force: true });
+  }
+});
