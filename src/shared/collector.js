@@ -19,6 +19,8 @@ const cursorAuth = require('./cursorAuth');
 const { findSessionFiles, codexSessionFile, codexArchivedSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
 
+const WATCH_POLL_INTERVAL_MS = 2000;
+
 function toUnpackedPath(p) {
   // electron-builder asarUnpack stores real files at .../app.asar.unpacked/...
   // require.resolve() returns the .../app.asar/... path, which spawn() can't read.
@@ -670,6 +672,49 @@ function watchPathsForClients(clientsCsv) {
   return candidates.filter(dirExists);
 }
 
+function localDateParts(date) {
+  return [
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ];
+}
+
+// On Windows, Codex can keep its active JSONL handle open while appending and
+// NTFS may leave LastWriteTime unchanged until that handle is flushed or closed.
+// chokidar v3's polling watcher then misses the growth entirely. Poll only the
+// two date buckets that can contain a live session (today + an overnight session
+// started yesterday), using file size as the append signal. This is deliberately
+// narrow: recursively statting every tracked-client tree every two seconds would
+// reintroduce the load problem that the watcher path was designed to avoid.
+function codexLiveSessionSizeSnapshot(homeDir = os.homedir(), now = new Date()) {
+  const dates = [new Date(now), new Date(now)];
+  dates[1].setDate(dates[1].getDate() - 1);
+  const snapshot = new Map();
+  for (const date of dates) {
+    const dir = path.join(homeDir, '.codex', 'sessions', ...localDateParts(date));
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { continue; }
+    for (const entry of entries) {
+      if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== '.jsonl') continue;
+      const filePath = path.join(dir, entry.name);
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.isFile()) snapshot.set(filePath, `${stat.size}:${stat.birthtimeMs}:${stat.ino || 0}`);
+      } catch (_) {}
+    }
+  }
+  return snapshot;
+}
+
+function fileSizeSnapshotChanged(previous, current) {
+  if (!previous || previous.size !== current.size) return Boolean(previous);
+  for (const [filePath, signature] of current) {
+    if (previous.get(filePath) !== signature) return true;
+  }
+  return false;
+}
+
 // Inside a Hermes home dir tokscale only reads the SQLite db; the rest is the
 // Desktop App runtime (hermes-agent/node_modules/venv, logs, cache — 150k+ files
 // for some users). A plain recursive watch of ~/.hermes pegged CPU at 100%+
@@ -791,6 +836,7 @@ function startCollector(options) {
   let debounceTimer = null;
   let intervalTimer = null;
   let limitsTimer = null;
+  let codexSizePollTimer = null;
   let limitsTickPromise = null;
   let latestSummary = null;
   let stopped = false;
@@ -999,7 +1045,7 @@ function startCollector(options) {
         ignoreInitial: true,
         persistent: true,
         usePolling: true,
-        interval: 2000,
+        interval: WATCH_POLL_INTERVAL_MS,
         binaryInterval: 5000,
         ...(ignored ? { ignored } : {}),
         awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 }
@@ -1011,6 +1057,24 @@ function startCollector(options) {
     } catch (error) {
       log(`Cannot watch ${dirs.join(', ')}: ${error.message}`);
     }
+  }
+
+  function setupCodexSizePoller() {
+    const trackedClients = new Set(normalizeClientsCsv(clients).split(',').filter(Boolean));
+    const platformValue = options.platform || process.platform;
+    if (!watchEnabled || platformValue !== 'win32' || !trackedClients.has('codex')) return;
+    const pollIntervalMs = Number.isFinite(options.watchPollIntervalMs) && options.watchPollIntervalMs > 0
+      ? options.watchPollIntervalMs
+      : WATCH_POLL_INTERVAL_MS;
+    const homeDir = options.homeDir || os.homedir();
+    let previous = codexLiveSessionSizeSnapshot(homeDir);
+    codexSizePollTimer = setInterval(() => {
+      if (stopped) return;
+      const current = codexLiveSessionSizeSnapshot(homeDir);
+      const changed = fileSizeSnapshotChanged(previous, current);
+      previous = current;
+      if (changed) scheduleTick('watch:size:codex');
+    }, pollIntervalMs);
   }
 
   async function refreshLimitsOnly() {
@@ -1062,6 +1126,7 @@ function startCollector(options) {
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     if (intervalTimer) { clearTimeout(intervalTimer); intervalTimer = null; }
     if (limitsTimer) { clearLimitsTimeout(limitsTimer); limitsTimer = null; }
+    if (codexSizePollTimer) { clearInterval(codexSizePollTimer); codexSizePollTimer = null; }
     for (const watcher of watchers) {
       try { watcher.close(); } catch (_) {}
     }
@@ -1069,6 +1134,7 @@ function startCollector(options) {
   }
 
   setupWatchers();
+  setupCodexSizePoller();
   loop();
   scheduleLimitsRefresh();
 
@@ -1080,6 +1146,7 @@ module.exports = {
   collectHistoryOnce,
   collectUsageOnce,
   clientDataDirPresence,
+  codexLiveSessionSizeSnapshot,
   computePeriodWindows,
   configFingerprint,
   deriveClientStatus,
@@ -1099,6 +1166,7 @@ module.exports = {
   shouldIncludeHistory,
   startCollector,
   tokscaleCommand,
+  fileSizeSnapshotChanged,
   watchIgnoreMatcher,
   watchPathsForClients
 };
