@@ -153,13 +153,16 @@ test('fetchCodexLimits uses the ChatGPT embedded binary when the legacy app is a
     env: { PATH: '/usr/bin' },
     existsSync: (candidate) => candidate === chatGptCodex,
     readFileSync: () => { throw new Error('no auth.json'); },
-    spawn: (command) => {
-      spawned.push(command);
+    spawn: (command, args) => {
+      spawned.push({ command, args });
       return successfulCodexRpcChild();
     }
   });
 
-  assert.deepEqual(spawned, [chatGptCodex]);
+  assert.deepEqual(spawned, [{
+    command: chatGptCodex,
+    args: ['-s', 'read-only', '-a', 'never', 'app-server']
+  }]);
   assert.equal(provider.sourceDetail, 'app');
   assert.deepEqual(provider.windows.map((window) => [window.kind, window.usedPercent, window.resetsAt]), [
     ['session', 10, '2026-07-10T07:51:20.000Z'],
