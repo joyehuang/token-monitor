@@ -1087,13 +1087,42 @@ function isPeriodExpired(record, periodName, nowMs) {
   return false;
 }
 
+// Historical archives/older devices predate profile attribution. Preserve their
+// totals in an explicit unknown bucket; never guess that an old account is Work
+// or Personal merely because another device now reports those profiles.
+function preserveUnattributedCodex(period) {
+  const id = 'codex-legacy';
+  const known = Object.keys(period.profiles || {}).filter((key) => key.startsWith('codex-') && key !== id);
+  const residual = Math.max(0, (period.clients.codex || 0) - known.reduce((sum, key) => sum + (period.profiles[key] || 0), 0));
+  if (!residual) return false;
+  for (const [profileMap, clientMap] of [['profiles', 'clients'], ['profileCosts', 'clientCosts'], ['profileCacheReads', 'clientCacheReads'], ['profileCacheWrites', 'clientCacheWrites'], ['profileOutputs', 'clientOutputs']]) {
+    period[profileMap][id] = Math.max(0, (period[clientMap].codex || 0) - known.reduce((sum, key) => sum + (period[profileMap][key] || 0), 0));
+  }
+  for (const [profileMap, clientMap] of [['profileModels', 'clientModels'], ['profileModelCosts', 'clientModelCosts']]) {
+    period[profileMap][id] = {};
+    for (const [model, value] of Object.entries(period[clientMap].codex || {})) {
+      const rest = Math.max(0, value - known.reduce((sum, key) => sum + (period[profileMap][key]?.[model] || 0), 0));
+      if (rest) period[profileMap][id][model] = rest;
+    }
+  }
+  return true;
+}
+
 function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
+  const hasCodexProfiles = devices.some((device) => normalizeUsageProfiles(device.usageProfiles).some((profile) => profile.client === 'codex'));
   const aggregate = { updatedAt: new Date().toISOString(), periods: {}, devices: [], usageProfiles: [] };
   const usageProfiles = new Map();
   for (const periodName of PERIODS) aggregate.periods[periodName] = emptyPeriod();
   const now = nowMs;
   for (const record of devices) {
     const normalized = normalizeDeviceRecord(record);
+    if (hasCodexProfiles) {
+      let legacy = false;
+      for (const period of Object.values(normalized.periods)) legacy = preserveUnattributedCodex(period) || legacy;
+      if (legacy && !(normalized.usageProfiles || []).some((profile) => profile.id === 'codex-legacy')) {
+        normalized.usageProfiles = [...(normalized.usageProfiles || []), { id: 'codex-legacy', client: 'codex', label: 'Legacy (unclassified)' }];
+      }
+    }
     const ageMs = now - Date.parse(normalized.receivedAt || normalized.updatedAt || 0);
     const stale = Number.isFinite(ageMs) && staleAfterMs > 0 ? ageMs > staleAfterMs : false;
     aggregate.devices.push({
