@@ -307,6 +307,16 @@
               </label>
               <p id="collectionCadenceNote" class="settings-note" data-i18n="settings.collection.modeDesc" hidden>Interval mode turns off file watching.</p>
             </div>
+            <div class="settings-subgroup codex-usage-profiles-block">
+              <div class="settings-note-row">
+                <div>
+                  <div class="settings-group-header"><span>Codex usage profiles</span></div>
+                  <p class="settings-note">Personal is collected as before. Add log folders to split additional usage under generic Work labels; sign-in and quota data are never accessed.</p>
+                </div>
+                <button id="addCodexUsageProfileButton" type="button">Add folder…</button>
+              </div>
+              <div id="codexUsageProfileList" class="codex-usage-profile-list"></div>
+            </div>
             <div id="wslScanRow" class="settings-wsl-block hidden">
               <label class="checkbox-label wsl-scan-toggle"><input id="wslScanInput" type="checkbox" /><span data-i18n="settings.collection.wslScan">Scan tools inside WSL</span></label>
               <p class="settings-note" data-i18n="settings.collection.wslScanDesc">When off, Windows no longer scans WSL tools over \\wsl$.</p>
@@ -696,6 +706,7 @@
     <script src="preferenceDragSort.js"></script>
     <script src="i18n.js"></script>
     <script src="sessionRows.js"></script>
+    <script src="usageProfileRows.js"></script>
     <script src="sessionDetail.js"></script>
     <script src="customPricingForm.js"></script>
     <script src="../windowShortcut.js"></script>

@@ -306,6 +306,27 @@ test('mergeDeviceRecord preserves usage for clients omitted by the active tracke
   assert.equal(merged.periods.today.sessions['codex:c1'], undefined);
 });
 
+test('mergeDeviceRecord preserves profile attribution when Codex tracking is disabled', () => {
+  const existing = {
+    deviceId: 'macbook', trackedClients: ['codex'], updatedAt: '2026-05-30T12:00:00.000Z',
+    usageProfiles: [{ id: 'codex-work', client: 'codex', label: 'Work' }],
+    today: {
+      totalTokens: 50, clients: { codex: 50 }, profiles: { 'codex-work': 50 },
+      profileModels: { 'codex-work': { 'gpt-5': 50 } }, clientModels: { codex: { 'gpt-5': 50 } }, models: { 'gpt-5': 50 },
+      sessions: { 'codex:codex-work:same': { client: 'codex', profileId: 'codex-work', sessionId: 'same', totalTokens: 50, detailAvailable: false, models: { 'gpt-5': 50 } } }
+    }
+  };
+  const merged = mergeDeviceRecord(existing, {
+    deviceId: 'macbook', trackedClients: ['claude'], updatedAt: '2026-05-30T12:01:00.000Z',
+    today: { totalTokens: 10, clients: { claude: 10 }, models: { opus: 10 }, clientModels: { claude: { opus: 10 } } }
+  });
+  assert.equal(merged.periods.today.totalTokens, 60);
+  assert.equal(merged.periods.today.profiles['codex-work'], 50);
+  assert.equal(merged.periods.today.profileModels['codex-work']['gpt-5'], 50);
+  assert.equal(merged.periods.today.sessions['codex:codex-work:same'].totalTokens, 50);
+  assert.deepEqual(merged.usageProfiles, [{ id: 'codex-work', client: 'codex', label: 'Work' }]);
+});
+
 test('mergeDeviceRecord preserves omitted-client day and month usage only inside matching calendar periods', () => {
   const existing = {
     deviceId: 'macbook',

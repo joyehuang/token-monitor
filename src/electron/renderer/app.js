@@ -88,6 +88,7 @@ const { limitFillPercent, limitModeSuffix } = window.TokenMonitorLimitDisplayMod
 const i18n = window.TokenMonitorI18n;
 const currencyApi = window.TokenMonitorCurrency;
 const sessionRowsApi = window.TokenMonitorSessionRows;
+const usageProfileRowsApi = window.TokenMonitorUsageProfileRows;
 const sessionDetailApi = window.TokenMonitorSessionDetail;
 const windowShortcutApi = window.TokenMonitorWindowShortcut;
 const LIMIT_REFRESH_OPTIONS = [60000, 120000, 300000, 900000, 1800000];
@@ -215,6 +216,8 @@ Object.assign(els, {
   hubAddressList: document.getElementById('hubAddressList'),
   collectionCadenceInput: document.getElementById('collectionCadenceInput'),
   collectionCadenceNote: document.getElementById('collectionCadenceNote'),
+  addCodexUsageProfileButton: document.getElementById('addCodexUsageProfileButton'),
+  codexUsageProfileList: document.getElementById('codexUsageProfileList'),
   sessionUsageArchiveInput: document.getElementById('sessionUsageArchiveInput'),
   sessionUsageArchiveStatus: document.getElementById('sessionUsageArchiveStatus'),
   reduceMotionInput: document.getElementById('reduceMotionInput'),
@@ -1127,7 +1130,7 @@ function rowTemplate(rowData) {
   return row;
 }
 
-function updateRow(row, { name, subtitle, detail, value, cost, max, color, stale, platform, local, client, kind, cacheReadTokens, outputTokens }) {
+function updateRow(row, { name, subtitle, detail, value, cost, max, color, stale, platform, local, client, kind, detailAvailable, cacheReadTokens, outputTokens }) {
   const width = rowWidth(value, max);
   const isExpanded = row.classList.contains('expanded');
   row.className = `row${kind ? ` ${kind}-row` : ''}${stale ? ' stale' : ''}${local ? ' local' : ''}`;
@@ -1142,6 +1145,7 @@ function updateRow(row, { name, subtitle, detail, value, cost, max, color, stale
   if (platform !== undefined) row.dataset.platform = platform || '';
   if (client !== undefined) row.dataset.client = client || '';
   if (kind !== undefined) row.dataset.kind = kind || '';
+  if (detailAvailable !== undefined) row.dataset.detailAvailable = String(detailAvailable);
   const mark = row.querySelector('.row-mark');
   const iconKind = iconKindFor({ key: row.dataset.key, platform: row.dataset.platform || '', client: row.dataset.client || '' }, state.breakdown);
   if (iconKind.kind === 'icon') {
@@ -1269,7 +1273,10 @@ function toolRowsForPeriod(period) {
   const clientRows = Object.entries(period?.clients || {}).filter(([, value]) => Number(value) > 0).map(([client, value]) => ({ key: client, name: clientLabels[client] || client, value: Number(value), cost: Number(period?.clientCosts?.[client] || 0), color: clientColors[client] || clientColors.default, stale: false, cacheReadTokens: Number(period?.clientCacheReads?.[client] || 0), cacheWriteTokens: Number(period?.clientCacheWrites?.[client] || 0), outputTokens: Number(period?.clientOutputs?.[client] || 0) }));
   if (clientRows.length > 0) {
     const usageSortedRows = clientRows.sort((a, b) => b.value - a.value);
-    return clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
+    const visible = clientDisplayPreferencesApi.applyClientDisplayPreferences(usageSortedRows, state.settings?.clientDisplayOrder, state.settings?.hiddenClients, KNOWN_CLIENTS, state.settings?.pinnedClients);
+    return visible.flatMap((row) => row.key === 'codex'
+      ? [row, ...usageProfileRowsApi.profileRowsForClient(period, state.stats?.usageProfiles, 'codex', { clientLabel: clientLabels.codex, color: clientColors.codex })]
+      : [row]);
   }
   if (Number(period?.totalTokens || 0) === 0) return [];
   return deviceRowsForPeriod();
@@ -1298,7 +1305,8 @@ function sessionRowsForPeriod(period) {
     clientColors,
     modelColor,
     stableColor,
-    fallbackColors: fallbackModelColors
+    fallbackColors: fallbackModelColors,
+    usageProfiles: state.stats?.usageProfiles || []
   });
   if (rows.length > 0) return rows.sort((a, b) => b.sortTime - a.sortTime || b.value - a.value || b.cost - a.cost || a.name.localeCompare(b.name));
   if (Number(period?.totalTokens || 0) === 0) return [];
@@ -4293,6 +4301,7 @@ function syncSettingsForm() {
     }
   }
   if (els.wslScanInput) els.wslScanInput.checked = state.settings.wslScanEnabled !== false;
+  renderCodexUsageProfiles();
   const exportAutoOn = Boolean(state.settings.exportAutoEnabled);
   const exportDir = state.settings.exportDir || '';
   if (els.exportAutoInput) els.exportAutoInput.checked = exportAutoOn;
@@ -5029,6 +5038,10 @@ function localWslStatus() {
   return localDevice()?.wslStatus || null;
 }
 
+function localCodexProfileStatus() {
+  return new Map((localDevice()?.codexProfileStatus || []).map((status) => [status.id, status]));
+}
+
 // WSL attribution panel: shows the WSL pipeline state + which tools were detected
 // (markers) vs which returned tokens. Windows-only (the whole block hides off-Win).
 function renderWslPanel() {
@@ -5072,6 +5085,46 @@ function renderWslPanel() {
       row.append(name, tag);
       els.wslPanel.append(row);
     }
+  }
+}
+
+function renderCodexUsageProfiles() {
+  if (!els.codexUsageProfileList) return;
+  els.codexUsageProfileList.replaceChildren();
+  const personal = document.createElement('div');
+  personal.className = 'codex-usage-profile-row';
+  const personalLabel = document.createElement('span');
+  personalLabel.className = 'codex-usage-profile-label';
+  personalLabel.textContent = 'Personal · default';
+  personal.append(personalLabel);
+  els.codexUsageProfileList.append(personal);
+  const statuses = localCodexProfileStatus();
+  for (const profile of (state.settings?.codexUsageProfiles || [])) {
+    const row = document.createElement('div');
+    row.className = 'codex-usage-profile-row';
+    const label = document.createElement('span');
+    label.className = 'codex-usage-profile-label';
+    label.textContent = profile.label || 'Work';
+    const status = statuses.get(profile.id);
+    if (status) {
+      const tag = document.createElement('span');
+      tag.className = `tool-status-tag tool-status-tag-${status.state === 'active' ? 'ok' : status.state === 'partial' ? 'neutral' : 'muted'}`;
+      tag.textContent = status.state.replace(/-/g, ' ');
+      label.append(' ', tag);
+    }
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', async () => {
+      const result = await window.tokenMonitor.removeCodexUsageProfile(profile.id);
+      if (result?.ok) {
+        state.settings.codexUsageProfiles = result.profiles || [];
+        renderCodexUsageProfiles();
+        await refreshStats();
+      }
+    });
+    row.append(label, remove);
+    els.codexUsageProfileList.append(row);
   }
 }
 
@@ -5590,11 +5643,11 @@ els.breakdown.addEventListener('click', (event) => {
   const key = rowEl.dataset.key || '';            // "session:<client>:<sessionId>"
   const client = rowEl.dataset.client || '';
   if (client !== 'claude' && client !== 'codex' && client !== 'opencode') return;
-  const match = key.match(/^session:([^:]+):(.+)$/);
-  if (!match) return;
-  const sessionId = match[2];
+  const wireKey = key.replace(/^session:/, '');
   const period = state.stats?.periods?.[state.period];
-  const session = period?.sessions?.[`${client}:${sessionId}`];
+  const session = period?.sessions?.[wireKey];
+  if (!session || session.detailAvailable === false) return;
+  const sessionId = session.sessionId;
   openSessionDetail({
     client,
     sessionId,
@@ -5716,6 +5769,14 @@ els.collectionCadenceInput?.addEventListener('change', async () => {
 });
 els.wslScanInput?.addEventListener('change', async () => {
   await saveSettings({ wslScanEnabled: els.wslScanInput.checked });
+});
+els.addCodexUsageProfileButton?.addEventListener('click', async () => {
+  const result = await window.tokenMonitor.addCodexUsageProfile();
+  if (result?.ok) {
+    state.settings.codexUsageProfiles = result.profiles || [];
+    renderCodexUsageProfiles();
+    await refreshStats();
+  }
 });
 els.exportAutoInput?.addEventListener('change', async () => {
   await saveSettings({ exportAutoEnabled: els.exportAutoInput.checked });

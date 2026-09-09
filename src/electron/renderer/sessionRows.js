@@ -82,6 +82,7 @@
   function sessionRowsForPeriod(period, options = {}) {
     const labels = options.clientLabels || {};
     const colors = options.clientColors || {};
+    const profiles = new Map((options.usageProfiles || []).map((profile) => [profile.id, profile]));
     const colorForModel = typeof options.modelColor === 'function' ? options.modelColor : null;
     const stable = typeof options.stableColor === 'function' ? options.stableColor : stableColor;
     const palette = options.fallbackColors || fallbackColors;
@@ -93,7 +94,8 @@
         const client = session?.client || '';
         const clientLabel = labels[client] || client || 'Session';
         const modelLabel = sessionModelLabel(session);
-        const titleParts = [clientLabel, modelLabel].filter(Boolean);
+        const profileLabel = profiles.get(session?.profileId)?.label || '';
+        const titleParts = [clientLabel, profileLabel, modelLabel].filter(Boolean);
         const sessionId = session?.sessionId || key;
         const subtitleParts = [
           sessionActivityLabel(session, now),
@@ -110,6 +112,7 @@
           color: colors[client] || (modelLabel && colorForModel ? colorForModel(modelLabel) : stable(key, palette)),
           stale: false,
           client,
+          detailAvailable: session?.detailAvailable !== false,
           sortTime: sessionTimestampValue(session),
           title: `${clientLabel} session ${sessionId}`
         };

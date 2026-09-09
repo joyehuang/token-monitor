@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('tokenMonitor', {
   previewAppearance: (patch) => ipcRenderer.invoke('appearance:preview', patch),
   getStats: (options) => ipcRenderer.invoke('stats:get', options),
   getSessionDetail: (args) => ipcRenderer.invoke('session:getDetail', args),
+  addCodexUsageProfile: () => ipcRenderer.invoke('codexUsageProfiles:add'),
+  removeCodexUsageProfile: (id) => ipcRenderer.invoke('codexUsageProfiles:remove', id),
   getStreamStatus: () => ipcRenderer.invoke('stream:status'),
   getServiceStatus: (options) => ipcRenderer.invoke('serviceStatus:get', options),
   openDashboard: () => ipcRenderer.invoke('dashboard:open'),

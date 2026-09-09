@@ -3341,8 +3341,14 @@ body.floating-bubble-collapsed-right .floating-bubble-tab {
 .detail-role-user { color: #bda5f5; }
 .detail-role-sep { color: var(--muted); }
 .detail-turn-title { color: var(--muted); }
-.row.session-row[data-client="claude"], .row.session-row[data-client="codex"], .row.session-row[data-client="opencode"] { cursor: pointer; }
-.row.session-row[data-client="claude"] .row-metrics::after, .row.session-row[data-client="codex"] .row-metrics::after, .row.session-row[data-client="opencode"] .row-metrics::after { content: '›'; color: var(--muted); font-size: 14px; line-height: 1; }
+.row.session-row[data-detail-available="true"] { cursor: pointer; }
+.row.session-row[data-detail-available="true"] .row-metrics::after { content: '›'; color: var(--muted); font-size: 14px; line-height: 1; }
+.row.profile-row { margin-left: 18px; width: calc(100% - 18px); opacity: 0.88; }
+.row.profile-row .row-title { font-size: 11px; }
+.codex-usage-profile-list { display: grid; gap: 6px; margin-top: 8px; }
+.codex-usage-profile-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; border-radius: 8px; background: rgba(127,127,127,0.08); }
+.codex-usage-profile-label { font-size: 12px; }
+.codex-usage-profile-row button { flex: 0 0 auto; }
 .view-preference-row.has-subgroup {
   grid-template-columns: minmax(0, 1fr) repeat(3, 22px);
 }

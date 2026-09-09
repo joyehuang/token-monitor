@@ -104,6 +104,13 @@ function emptyPeriod() {
     modelOutputs: {},
     clientModels: {},
     clientModelCosts: {},
+    profiles: {},
+    profileCosts: {},
+    profileCacheReads: {},
+    profileCacheWrites: {},
+    profileOutputs: {},
+    profileModels: {},
+    profileModelCosts: {},
     sessions: {}
   };
 }
@@ -161,6 +168,43 @@ function hasOwn(object, key) {
 function normalizeTrackedClients(value) {
   const values = Array.isArray(value) ? value : String(value ?? '').split(',');
   return Array.from(new Set(values.map(normalizeClientName).filter(Boolean)));
+}
+
+function normalizeUsageProfiles(value) {
+  const profiles = [];
+  const seen = new Set();
+  for (const item of (Array.isArray(value) ? value : [])) {
+    if (!item || typeof item !== 'object') continue;
+    const id = normalizeProfileId(item.id || item.profileId);
+    const client = normalizeClientName(item.client);
+    const label = String(item.label || '').replace(/[\r\n\t]/g, ' ').trim().slice(0, 48);
+    if (!id || !client || !label || seen.has(id)) continue;
+    seen.add(id);
+    profiles.push({ id, client, label });
+  }
+  return profiles;
+}
+
+const CODEX_PROFILE_STATES = new Set(['active', 'empty', 'partial', 'permission-denied', 'unreadable']);
+
+function normalizeCodexProfileStatus(value) {
+  const statuses = [];
+  for (const item of (Array.isArray(value) ? value : [])) {
+    const id = normalizeProfileId(item?.id);
+    const label = String(item?.label || '').replace(/[\r\n\t]/g, ' ').trim().slice(0, 48);
+    if (!id || !label || !CODEX_PROFILE_STATES.has(item.state)) continue;
+    statuses.push({
+      id,
+      label,
+      state: item.state,
+      files: Math.max(0, Math.round(asNumber(item.files))),
+      malformedLines: Math.max(0, Math.round(asNumber(item.malformedLines))),
+      oversizedLines: Math.max(0, Math.round(asNumber(item.oversizedLines))),
+      pendingFiles: Math.max(0, Math.round(asNumber(item.pendingFiles))),
+      ...(item.truncated === true ? { truncated: true } : {})
+    });
+  }
+  return statuses;
 }
 
 const CLIENT_STATUS_VALUES = new Set(['active', 'waiting', 'missing']);
@@ -368,8 +412,15 @@ function detectSessionId(obj) {
   return normalizeSessionId(firstString(obj, SESSION_ID_KEYS));
 }
 
-function sessionKey(client, sessionId) {
-  return `${client}:${sessionId}`;
+function normalizeProfileId(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw.replace(/[^a-z0-9_-]+/g, '-') || null;
+}
+
+function sessionKey(client, sessionId, profileId = '') {
+  // Keep the historical default-personal Codex key stable. Additional profiles
+  // still need the extra scope so an identical session id cannot overwrite it.
+  return profileId && profileId !== 'codex-personal' ? `${client}:${profileId}:${sessionId}` : `${client}:${sessionId}`;
 }
 
 function looksLikeUsageRow(obj) {
@@ -404,10 +455,11 @@ function sessionTokenComponents(input) {
   };
 }
 
-function emptySession(client, id) {
+function emptySession(client, id, profileId = '') {
   return {
     client,
     sessionId: id,
+    ...(profileId ? { profileId } : {}),
     totalTokens: 0,
     costUsd: 0,
     messageCount: 0,
@@ -425,6 +477,8 @@ function emptySession(client, id) {
 }
 
 function mergeSession(target, source) {
+  if (!target.profileId && source.profileId) target.profileId = normalizeProfileId(source.profileId);
+  if (source.detailAvailable === false) target.detailAvailable = false;
   target.totalTokens += Math.max(0, Math.round(asNumber(source.totalTokens)));
   target.costUsd += asNumber(source.costUsd);
   target.messageCount += Math.max(0, Math.round(asNumber(source.messageCount)));
@@ -456,8 +510,9 @@ function mergeSession(target, source) {
 
 function addSession(period, session) {
   if (!session?.client || !session?.sessionId) return;
-  const key = sessionKey(session.client, session.sessionId);
-  if (!period.sessions[key]) period.sessions[key] = emptySession(session.client, session.sessionId);
+  const profileId = normalizeProfileId(session.profileId);
+  const key = sessionKey(session.client, session.sessionId, profileId);
+  if (!period.sessions[key]) period.sessions[key] = emptySession(session.client, session.sessionId, profileId);
   mergeSession(period.sessions[key], session);
 }
 
@@ -494,8 +549,15 @@ function trimPeriodSessions(period, maxSessions = MAX_WIRE_SESSIONS_PER_PERIOD) 
 function summaryForWire(summary, maxSessions = MAX_WIRE_SESSIONS_PER_PERIOD) {
   const wire = { ...summary };
   for (const periodName of PERIODS) {
-    if (wire[periodName]) wire[periodName] = trimPeriodSessions(wire[periodName], maxSessions);
+    if (wire[periodName]) wire[periodName] = trimPeriodSessions(normalizePeriod(wire[periodName]), maxSessions);
   }
+  if (hasOwn(wire, 'usageProfiles')) wire.usageProfiles = normalizeUsageProfiles(wire.usageProfiles);
+  if (hasOwn(wire, 'codexProfileStatus')) wire.codexProfileStatus = normalizeCodexProfileStatus(wire.codexProfileStatus);
+  // Configuration paths are local-only. Delete common accidental aliases at the
+  // final post boundary even if a future caller spreads collector options in.
+  delete wire.codexUsageProfiles;
+  delete wire.codexProfiles;
+  delete wire.sourcePaths;
   return wire;
 }
 
@@ -524,7 +586,9 @@ function normalizeSession(input, fallbackKey) {
   const client = normalizeClientName(input.client || input.source || input.platform || input.agent || input.tool);
   const id = normalizeSessionId(input.sessionId || input.session_id || input.session || input.conversationId || input.conversation_id || input.threadId || input.thread_id || fallbackKey);
   if (!client || !id) return null;
-  const session = emptySession(client, id);
+  const profileId = normalizeProfileId(input.profileId || input.profile_id);
+  const session = emptySession(client, id, profileId);
+  if (input.detailAvailable === false || input.detail_available === false) session.detailAvailable = false;
   const components = sessionTokenComponents(input);
   Object.assign(session, components);
   const componentTotal = components.inputTokens + components.outputTokens + components.cacheReadTokens + components.cacheWriteTokens; // reasoning is a subset of output — see TOKEN_COMPONENT_KEYS
@@ -620,6 +684,46 @@ function normalizePeriod(input) {
       }
     }
   }
+  if (input.profiles && typeof input.profiles === 'object') {
+    for (const [profile, value] of Object.entries(input.profiles)) {
+      const key = normalizeProfileId(profile);
+      if (!key) continue;
+      period.profiles[key] = (period.profiles[key] || 0) + Math.max(0, Math.round(asNumber(value)));
+      if (input.profileCacheReads?.[profile]) period.profileCacheReads[key] = (period.profileCacheReads[key] || 0) + Math.max(0, Math.round(asNumber(input.profileCacheReads[profile])));
+      if (input.profileCacheWrites?.[profile]) period.profileCacheWrites[key] = (period.profileCacheWrites[key] || 0) + Math.max(0, Math.round(asNumber(input.profileCacheWrites[profile])));
+      if (input.profileOutputs?.[profile]) period.profileOutputs[key] = (period.profileOutputs[key] || 0) + Math.max(0, Math.round(asNumber(input.profileOutputs[profile])));
+    }
+  }
+  if (input.profileCosts && typeof input.profileCosts === 'object') {
+    for (const [profile, value] of Object.entries(input.profileCosts)) {
+      const key = normalizeProfileId(profile);
+      if (key) period.profileCosts[key] = (period.profileCosts[key] || 0) + asNumber(value);
+    }
+  }
+  if (input.profileModels && typeof input.profileModels === 'object') {
+    for (const [profile, models] of Object.entries(input.profileModels)) {
+      const profileKey = normalizeProfileId(profile);
+      if (!profileKey || !models || typeof models !== 'object') continue;
+      for (const [model, value] of Object.entries(models)) {
+        const modelKey = normalizeModelName(model);
+        if (!modelKey) continue;
+        if (!period.profileModels[profileKey]) period.profileModels[profileKey] = {};
+        period.profileModels[profileKey][modelKey] = (period.profileModels[profileKey][modelKey] || 0) + Math.max(0, Math.round(asNumber(value)));
+      }
+    }
+  }
+  if (input.profileModelCosts && typeof input.profileModelCosts === 'object') {
+    for (const [profile, models] of Object.entries(input.profileModelCosts)) {
+      const profileKey = normalizeProfileId(profile);
+      if (!profileKey || !models || typeof models !== 'object') continue;
+      for (const [model, value] of Object.entries(models)) {
+        const modelKey = normalizeModelName(model);
+        if (!modelKey) continue;
+        if (!period.profileModelCosts[profileKey]) period.profileModelCosts[profileKey] = {};
+        period.profileModelCosts[profileKey][modelKey] = (period.profileModelCosts[profileKey][modelKey] || 0) + asNumber(value);
+      }
+    }
+  }
   if (input.sessions && typeof input.sessions === 'object') {
     for (const [key, value] of Object.entries(input.sessions)) {
       const session = normalizeSession(value, key);
@@ -702,6 +806,8 @@ function normalizeDeviceRecord(record) {
     limits: normalizeLimitsSummary(record.limits)
   };
   if (hasOwn(record, 'trackedClients')) normalized.trackedClients = normalizeTrackedClients(record.trackedClients);
+  if (hasOwn(record, 'usageProfiles')) normalized.usageProfiles = normalizeUsageProfiles(record.usageProfiles);
+  if (hasOwn(record, 'codexProfileStatus')) normalized.codexProfileStatus = normalizeCodexProfileStatus(record.codexProfileStatus);
   if (hasOwn(record, 'clientStatus')) normalized.clientStatus = normalizeClientStatus(record.clientStatus);
   if (hasOwn(record, 'wslStatus')) normalized.wslStatus = normalizeWslStatus(record.wslStatus);
   if (hasOwn(record, 'history')) normalized.history = coerceHistory(record.history);
@@ -739,6 +845,22 @@ function addClientSessionUsage(target, client, sessions) {
   }
 }
 
+function addClientProfileUsage(target, client, source, usageProfiles) {
+  for (const profile of usageProfiles || []) {
+    if (profile.client !== client) continue;
+    const id = profile.id;
+    const tokens = asNumber(source.profiles?.[id]);
+    const cost = asNumber(source.profileCosts?.[id]);
+    if (tokens > 0) target.profiles[id] = (target.profiles[id] || 0) + tokens;
+    if (cost > 0) target.profileCosts[id] = (target.profileCosts[id] || 0) + cost;
+    if (source.profileCacheReads?.[id]) target.profileCacheReads[id] = (target.profileCacheReads[id] || 0) + source.profileCacheReads[id];
+    if (source.profileCacheWrites?.[id]) target.profileCacheWrites[id] = (target.profileCacheWrites[id] || 0) + source.profileCacheWrites[id];
+    if (source.profileOutputs?.[id]) target.profileOutputs[id] = (target.profileOutputs[id] || 0) + source.profileOutputs[id];
+    if (source.profileModels?.[id]) target.profileModels[id] = { ...(target.profileModels[id] || {}), ...source.profileModels[id] };
+    if (source.profileModelCosts?.[id]) target.profileModelCosts[id] = { ...(target.profileModelCosts[id] || {}), ...source.profileModelCosts[id] };
+  }
+}
+
 function shouldPreservePeriod(periodName, existingRecord, incomingRecord) {
   if (periodName === 'allTime') return true;
   const existingDate = recordDate(existingRecord);
@@ -765,6 +887,7 @@ function preserveUntrackedClientUsage(existingRecord, incomingRecord, trackedCli
       target.clients[client] = tokens;
       if (cost > 0) target.clientCosts[client] = cost;
       addClientModelUsage(target, client, source.clientModels?.[client], source.clientModelCosts?.[client]);
+      addClientProfileUsage(target, client, source, existingRecord.usageProfiles);
       addClientSessionUsage(target, client, source.sessions);
     }
   }
@@ -841,6 +964,12 @@ function mergeDeviceRecord(existing, incoming) {
   if (!hasIncomingHistory && hasOwn(normalizedExisting, 'history')) normalizedIncoming.history = normalizedExisting.history;
   if (hasIncomingTrackedClients) {
     preserveUntrackedClientUsage(normalizedExisting, normalizedIncoming, normalizedIncoming.trackedClients || []);
+    const active = new Set(normalizedIncoming.trackedClients || []);
+    const combinedProfiles = normalizeUsageProfiles([
+      ...(normalizedIncoming.usageProfiles || []),
+      ...(normalizedExisting.usageProfiles || []).filter((profile) => !active.has(profile.client))
+    ]);
+    if (combinedProfiles.length) normalizedIncoming.usageProfiles = combinedProfiles;
   }
   if (!hasIncomingWeek) fillMissingWeek(normalizedExisting, normalizedIncoming);
   return normalizedIncoming;
@@ -908,6 +1037,21 @@ function addPeriodInto(target, source) {
       target.clientModelCosts[client][model] = (target.clientModelCosts[client][model] || 0) + cost;
     }
   }
+  for (const [profile, tokens] of Object.entries(source.profiles || {})) {
+    target.profiles[profile] = (target.profiles[profile] || 0) + tokens;
+    if (source.profileCacheReads?.[profile]) target.profileCacheReads[profile] = (target.profileCacheReads[profile] || 0) + source.profileCacheReads[profile];
+    if (source.profileCacheWrites?.[profile]) target.profileCacheWrites[profile] = (target.profileCacheWrites[profile] || 0) + source.profileCacheWrites[profile];
+    if (source.profileOutputs?.[profile]) target.profileOutputs[profile] = (target.profileOutputs[profile] || 0) + source.profileOutputs[profile];
+  }
+  for (const [profile, cost] of Object.entries(source.profileCosts || {})) target.profileCosts[profile] = (target.profileCosts[profile] || 0) + cost;
+  for (const [profile, models] of Object.entries(source.profileModels || {})) {
+    if (!target.profileModels[profile]) target.profileModels[profile] = {};
+    for (const [model, tokens] of Object.entries(models)) target.profileModels[profile][model] = (target.profileModels[profile][model] || 0) + tokens;
+  }
+  for (const [profile, models] of Object.entries(source.profileModelCosts || {})) {
+    if (!target.profileModelCosts[profile]) target.profileModelCosts[profile] = {};
+    for (const [model, cost] of Object.entries(models)) target.profileModelCosts[profile][model] = (target.profileModelCosts[profile][model] || 0) + cost;
+  }
   for (const session of Object.values(source.sessions)) addSession(target, session);
   return target;
 }
@@ -944,7 +1088,8 @@ function isPeriodExpired(record, periodName, nowMs) {
 }
 
 function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
-  const aggregate = { updatedAt: new Date().toISOString(), periods: {}, devices: [] };
+  const aggregate = { updatedAt: new Date().toISOString(), periods: {}, devices: [], usageProfiles: [] };
+  const usageProfiles = new Map();
   for (const periodName of PERIODS) aggregate.periods[periodName] = emptyPeriod();
   const now = nowMs;
   for (const record of devices) {
@@ -962,17 +1107,23 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
       ageMs: Number.isFinite(ageMs) ? ageMs : null,
       stale,
       ...(hasOwn(normalized, 'trackedClients') ? { trackedClients: normalized.trackedClients } : {}),
+      ...(hasOwn(normalized, 'usageProfiles') ? { usageProfiles: normalized.usageProfiles } : {}),
+      ...(hasOwn(normalized, 'codexProfileStatus') ? { codexProfileStatus: normalized.codexProfileStatus } : {}),
       ...(hasOwn(normalized, 'clientStatus') ? { clientStatus: normalized.clientStatus } : {}),
       ...(hasOwn(normalized, 'wslStatus') ? { wslStatus: normalized.wslStatus } : {}),
       periods: normalized.periods,
       limits: normalized.limits
     });
+    for (const profile of normalized.usageProfiles || []) {
+      if (!usageProfiles.has(profile.id)) usageProfiles.set(profile.id, profile);
+    }
     for (const periodName of PERIODS) {
       if (isPeriodExpired(normalized, periodName, now)) continue;
       addPeriodInto(aggregate.periods[periodName], normalizePeriod(normalized.periods[periodName]));
     }
   }
   aggregate.limits = aggregateLimits(aggregate.devices, staleAfterMs, now);
+  aggregate.usageProfiles = Array.from(usageProfiles.values());
   aggregate.devices.sort((a, b) => a.deviceId.localeCompare(b.deviceId));
   for (const periodName of PERIODS) {
     aggregate.periods[periodName].totalTokens = Math.round(aggregate.periods[periodName].totalTokens);
@@ -1041,4 +1192,4 @@ function deltaValue(base, fresh, anchor, key) {
   return base ?? fresh;
 }
 
-module.exports = { MAX_WIRE_SESSIONS_PER_PERIOD, PERIODS, addPeriodInto, aggregateDevices, aggregateHistory, applyPeriodDelta, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, localWeekKey, mergeDeviceRecord, mergePeriods, normalizeDeviceRecord, normalizePeriod, startOfLocalWeek, summaryForWire, trimPeriodSessions, utcWeekKey };
+module.exports = { MAX_WIRE_SESSIONS_PER_PERIOD, PERIODS, addPeriodInto, aggregateDevices, aggregateHistory, applyPeriodDelta, carryDeviceHistory, emptyPeriod, extractUsageFromTokscale, localWeekKey, mergeDeviceRecord, mergePeriods, normalizeCodexProfileStatus, normalizeDeviceRecord, normalizePeriod, normalizeUsageProfiles, startOfLocalWeek, summaryForWire, trimPeriodSessions, utcWeekKey };

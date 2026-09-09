@@ -63,6 +63,7 @@ const { aggregateDevices, aggregateHistory, carryDeviceHistory, summaryForWire }
 const { syncLimits } = require('../shared/limits');
 const { historyPreview } = require('../shared/history');
 const { readSessionDetail } = require('../shared/sessionDetail');
+const { normalizeCodexUsageProfiles, normalizeCodexUsageProfileSettings } = require('../shared/codexUsageProfiles');
 const { startDiscordRpc, stopDiscordRpc, updateDiscordRpc } = require('./discordRpc');
 const { buildTrayIcon, createTray, formatTrayText, pickUsageTrayIconId, popoverBounds } = require('./tray');
 const {
@@ -241,6 +242,7 @@ function defaultSettings() {
     copilotApiToken: '',
     copilotEnterpriseHost: '',
     codexManagedAccounts: [],
+    codexUsageProfiles: normalizeCodexUsageProfileSettings(process.env.TOKEN_MONITOR_CODEX_USAGE_PROFILES),
     appUpdate: {
       lastCheckedAt: null,
       lastKnownLatest: null,
@@ -941,6 +943,7 @@ function readSettings() {
       merged.serviceStatusRefreshMs = normalizeServiceStatusRefreshMs(saved.serviceStatusRefreshMs);
     }
     merged.codexManagedAccounts = normalizeCodexManagedAccounts(merged.codexManagedAccounts);
+    merged.codexUsageProfiles = normalizeCodexUsageProfileSettings(merged.codexUsageProfiles);
     if (saved.windowBehavior === undefined && saved.alwaysOnTop !== undefined) {
       merged.windowBehavior = saved.alwaysOnTop ? 'floating' : 'normal';
     }
@@ -1332,6 +1335,7 @@ function startSyncCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    codexUsageProfiles: settings.codexUsageProfiles,
     limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: async (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1383,6 +1387,7 @@ function startHostCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    codexUsageProfiles: settings.codexUsageProfiles,
     limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: (summary) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1584,6 +1589,7 @@ function startLocalCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    codexUsageProfiles: settings.codexUsageProfiles,
     limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: (summary, reason) => {
       const visibleSummary = summaryWithArchivedClientUsage(summary);
@@ -1796,6 +1802,9 @@ function settingsForRenderer() {
       : '';
   return {
     ...settings,
+    // Usage-source paths stay in the main-process settings store. The renderer
+    // only needs stable ids and labels to configure/display attribution.
+    codexUsageProfiles: (settings?.codexUsageProfiles || []).map(({ id, label, enabled }) => ({ id, label, enabled: enabled !== false })),
     deepseekApiKey: '',
     minimaxApiKey: '',
     copilotApiToken: '',
@@ -2637,6 +2646,7 @@ app.whenReady().then(async () => {
     const previousHistoryEnabled = settings.historyEnabled;
     const previousHistoryIntervalMs = settings.historyIntervalMs;
     const previousWslScanEnabled = settings.wslScanEnabled;
+    const previousCodexUsageProfiles = JSON.stringify(settings.codexUsageProfiles || []);
     const previousCollectionMode = settings.collectionMode;
     const previousCollectionIntervalMs = settings.collectionIntervalMs;
     const previousDeepSeekApiKey = settings.deepseekApiKey;
@@ -2653,6 +2663,7 @@ app.whenReady().then(async () => {
     const normalizedCurrency = patch.currency !== undefined ? normalizeCurrency(patch.currency, settings.currency) : normalizeCurrency(settings.currency);
     const normalizedPatch = { ...patch, currency: normalizedCurrency };
     delete normalizedPatch.codexManagedAccounts;
+    delete normalizedPatch.codexUsageProfiles;
     delete normalizedPatch.customModelPricing;
     if (patch.clients !== undefined) normalizedPatch.clients = clientsCsvForSetting(patch.clients, '');
     if (patch.deepseekApiKey !== undefined) normalizedPatch.deepseekApiKey = normalizeDeepSeekApiKey(patch.deepseekApiKey);
@@ -2695,6 +2706,7 @@ app.whenReady().then(async () => {
       historyEnabled: parseBoolean(patch.historyEnabled ?? settings.historyEnabled, false),
       historyIntervalMs: normalizeHistoryIntervalMs(patch.historyIntervalMs ?? settings.historyIntervalMs),
       wslScanEnabled: parseBoolean(patch.wslScanEnabled ?? settings.wslScanEnabled, true),
+      codexUsageProfiles: normalizeCodexUsageProfileSettings(settings.codexUsageProfiles),
       collectionMode: normalizeCollectionMode(patch.collectionMode ?? settings.collectionMode),
       collectionIntervalMs: normalizeCollectionIntervalMs(patch.collectionIntervalMs ?? settings.collectionIntervalMs),
       serviceProviderDisplayOrder: patch.serviceProviderDisplayOrder !== undefined ? String(patch.serviceProviderDisplayOrder || '') : (settings.serviceProviderDisplayOrder || ''),
@@ -2766,6 +2778,7 @@ app.whenReady().then(async () => {
       settings.historyEnabled !== previousHistoryEnabled ||
       settings.historyIntervalMs !== previousHistoryIntervalMs ||
       settings.wslScanEnabled !== previousWslScanEnabled ||
+      JSON.stringify(settings.codexUsageProfiles || []) !== previousCodexUsageProfiles ||
       settings.collectionMode !== previousCollectionMode ||
       settings.collectionIntervalMs !== previousCollectionIntervalMs ||
       settings.deepseekApiKey !== previousDeepSeekApiKey ||
@@ -2918,6 +2931,31 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:getDetail', (_event, args) => {
     const { client, sessionId, period, sessionCost } = args || {};
     return readSessionDetail({ client, sessionId, period, sessionCost, home: os.homedir() });
+  });
+  ipcMain.handle('codexUsageProfiles:add', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'Choose a Codex usage log home',
+      defaultPath: app.getPath('home')
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+    const existing = settings.codexUsageProfiles || [];
+    const label = existing.length === 0 ? 'Work' : `Work ${existing.length + 1}`;
+    const candidate = normalizeCodexUsageProfileSettings([...existing, { label, path: result.filePaths[0] }]);
+    const existingCount = normalizeCodexUsageProfiles(existing).length;
+    if (normalizeCodexUsageProfiles(candidate).length <= existingCount) {
+      return { ok: false, duplicate: true, profiles: settingsForRenderer().codexUsageProfiles };
+    }
+    settings.codexUsageProfiles = candidate;
+    saveSettings();
+    startMode();
+    return { ok: true, profiles: settingsForRenderer().codexUsageProfiles };
+  });
+  ipcMain.handle('codexUsageProfiles:remove', (_event, id) => {
+    settings.codexUsageProfiles = (settings.codexUsageProfiles || []).filter((profile) => profile.id !== String(id || ''));
+    saveSettings();
+    startMode();
+    return { ok: true, profiles: settingsForRenderer().codexUsageProfiles };
   });
   ipcMain.handle('stream:status', () => ({ connected: streamConnected, mode, ...(streamFailure || {}) }));
   ipcMain.handle('serviceStatus:get', (_event, options) => serviceStatusClient.getServiceStatus({

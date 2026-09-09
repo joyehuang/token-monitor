@@ -54,6 +54,28 @@ test('ingest inserts a device and is visible in getStats', () => {
   }
 });
 
+test('hub preserves profile attribution without storing source paths or transcript fields', () => {
+  const dataFile = tempDataFile();
+  const hub = createHub({ port: 0, host: '127.0.0.1', secret: '', dataFile, logger: { error() {} } });
+  try {
+    hub.ingest({
+      deviceId: 'dev-profile',
+      usageProfiles: [{ id: 'codex-work', client: 'codex', label: 'Work', path: '/private/work' }],
+      today: {
+        totalTokens: 10, clients: { codex: 10 }, profiles: { 'codex-work': 10 },
+        sessions: { 'codex:codex-work:same': { client: 'codex', profileId: 'codex-work', sessionId: 'same', totalTokens: 10, detailAvailable: false, prompt: 'private prompt' } }
+      }
+    });
+    const stats = hub.getStats();
+    assert.deepEqual(stats.usageProfiles, [{ id: 'codex-work', client: 'codex', label: 'Work' }]);
+    assert.equal(stats.periods.today.profiles['codex-work'], 10);
+    assert.equal(stats.periods.today.sessions['codex:codex-work:same'].detailAvailable, false);
+    assert.doesNotMatch(JSON.stringify(stats), /private\/work|private prompt/);
+  } finally {
+    fs.rmSync(dataFile, { force: true });
+  }
+});
+
 test('ingest without a deviceId throws', () => {
   const dataFile = tempDataFile();
   const hub = createHub({ port: 0, host: '127.0.0.1', secret: '', dataFile, logger: { error() {} } });

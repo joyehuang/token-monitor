@@ -67,3 +67,28 @@ test('summaryForWire tolerates a summary missing periods', () => {
   assert.equal(wire.week, undefined);
   assert.ok(MAX_WIRE_SESSIONS_PER_PERIOD > 0);
 });
+
+test('summaryForWire keeps only profile usage metadata and strips paths/content', () => {
+  const summary = {
+    deviceId: 'dev-a',
+    codexUsageProfiles: [{ id: 'codex-work', label: 'Work', path: '/private/work' }],
+    usageProfiles: [{ id: 'codex-work', client: 'codex', label: 'Work', path: '/private/work', email: 'person@example.test' }],
+    codexProfileStatus: [{ id: 'codex-work', label: 'Work', state: 'active', files: 1, path: '/private/work' }],
+    today: {
+      totalTokens: 10,
+      clients: { codex: 10 },
+      profiles: { 'codex-work': 10 },
+      sessions: {
+        'codex:codex-work:s1': {
+          client: 'codex', profileId: 'codex-work', sessionId: 's1', totalTokens: 10,
+          detailAvailable: false, cwd: '/private/work/repo', prompt: 'secret text', models: { 'gpt-5': 10 }
+        }
+      }
+    }
+  };
+  const wire = summaryForWire(summary);
+  const text = JSON.stringify(wire);
+  assert.deepEqual(wire.usageProfiles, [{ id: 'codex-work', client: 'codex', label: 'Work' }]);
+  assert.equal(wire.today.sessions['codex:codex-work:s1'].detailAvailable, false);
+  assert.doesNotMatch(text, /private|example\.test|secret text|codexUsageProfiles/);
+});

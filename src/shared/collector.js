@@ -18,6 +18,14 @@ const { collectLimitsOnce, createLimitsCollector, normalizeLimitsRefreshMs } = r
 const cursorAuth = require('./cursorAuth');
 const { findSessionFiles, codexSessionFile, codexArchivedSessionFile } = require('./sessionFiles');
 const opencodeSession = require('./opencodeSession');
+const {
+  PERSONAL_PROFILE,
+  attributeCodexToPersonal,
+  collectCodexUsageProfiles,
+  normalizeCodexUsageProfiles,
+  profileConfigFingerprint,
+  publicProfileMetadata
+} = require('./codexUsageProfiles');
 
 const WATCH_POLL_INTERVAL_MS = 2000;
 
@@ -142,6 +150,75 @@ function lookupModelPricing(modelId, commandTimeoutMs = 15000) {
   const id = String(modelId || '').trim();
   if (!id) return Promise.reject(new Error('lookupModelPricing: modelId is required'));
   return spawnTokscaleJson(['pricing', id, '--json', '--no-spinner'], commandTimeoutMs);
+}
+
+const CODEX_PROFILE_PRICING_TTL_MS = 5 * 60 * 1000;
+const codexProfilePricingCache = new Map();
+
+function nonNegativePrice(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+async function cachedCodexProfilePricing(modelId, lookup, nowMs = Date.now()) {
+  const cached = codexProfilePricingCache.get(modelId);
+  if (cached && nowMs - cached.at < CODEX_PROFILE_PRICING_TTL_MS) return cached.pricing;
+  let pricing = null;
+  try {
+    const result = await lookup(modelId);
+    const raw = result?.pricing || result;
+    if (raw && typeof raw === 'object') {
+      pricing = {
+        input: nonNegativePrice(raw.inputCostPerToken),
+        output: nonNegativePrice(raw.outputCostPerToken),
+        cacheRead: nonNegativePrice(raw.cacheReadInputTokenCost),
+        cacheWrite: nonNegativePrice(raw.cacheWriteInputTokenCost)
+      };
+    }
+  } catch (_) {}
+  codexProfilePricingCache.set(modelId, { at: nowMs, pricing });
+  return pricing;
+}
+
+function componentCost(components, pricing) {
+  if (!pricing) return 0;
+  return Number(components?.inputTokens || 0) * pricing.input
+    + Number(components?.outputTokens || 0) * pricing.output
+    + Number(components?.cacheReadTokens || 0) * pricing.cacheRead
+    + Number(components?.cacheWriteTokens || 0) * pricing.cacheWrite;
+}
+
+async function applyCodexProfilePricing(bundle, pricingComponents, lookup = lookupModelPricing) {
+  const models = new Set();
+  for (const period of Object.values(pricingComponents || {})) {
+    for (const session of Object.values(period || {})) {
+      for (const model of Object.keys(session.models || {})) models.add(model);
+    }
+  }
+  const pricing = new Map(await Promise.all(Array.from(models, async (model) => [model, await cachedCodexProfilePricing(model, lookup)])));
+  for (const [periodName, period] of Object.entries(bundle || {})) {
+    for (const [sessionKey, session] of Object.entries(period?.sessions || {})) {
+      let sessionCost = 0;
+      const componentSession = pricingComponents?.[periodName]?.[sessionKey];
+      for (const [model, components] of Object.entries(componentSession?.models || {})) {
+        const cost = componentCost(components, pricing.get(model));
+        sessionCost += cost;
+        if (cost > 0) {
+          period.modelCosts[model] = (period.modelCosts[model] || 0) + cost;
+          if (!period.clientModelCosts.codex) period.clientModelCosts.codex = {};
+          period.clientModelCosts.codex[model] = (period.clientModelCosts.codex[model] || 0) + cost;
+          if (!period.profileModelCosts[session.profileId]) period.profileModelCosts[session.profileId] = {};
+          period.profileModelCosts[session.profileId][model] = (period.profileModelCosts[session.profileId][model] || 0) + cost;
+          session.modelCosts[model] = (session.modelCosts[model] || 0) + cost;
+        }
+      }
+      session.costUsd += sessionCost;
+      period.costUsd += sessionCost;
+      period.clientCosts.codex = (period.clientCosts.codex || 0) + sessionCost;
+      period.profileCosts[session.profileId] = (period.profileCosts[session.profileId] || 0) + sessionCost;
+    }
+  }
+  return bundle;
 }
 
 function localTodayKey(date = new Date()) {
@@ -417,9 +494,6 @@ async function collectUsageOnce(options) {
       // windows exactly via applyPeriodDelta — one spawn instead of four.
       const todayJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--today'], commandTimeoutMs });
       today = extractUsageFromTokscale(todayJson);
-      week = applyPeriodDelta(anchor.week, today, anchor.today);
-      month = applyPeriodDelta(anchor.month, today, anchor.today);
-      allTime = applyPeriodDelta(anchor.allTime, today, anchor.today);
     } else {
       // Serial on purpose: concurrent scans triple the peak CPU/IO load, which
       // is what let the issue #15 self-trigger loop spike tokscale past 500% CPU.
@@ -436,6 +510,44 @@ async function collectUsageOnce(options) {
       allTime = extractUsageFromTokscale(allTimeJson);
     }
     applySessionTimestamps({ today, week, month, allTime }, options.homeDir || os.homedir());
+  }
+
+  const codexEnabled = normalizedClients.split(',').includes('codex');
+  let usageProfiles = codexEnabled ? [{ ...PERSONAL_PROFILE }] : [];
+  let codexProfileStatus = [];
+  let profileBundle = null;
+  if (codexEnabled) {
+    for (const period of [today, week, month, allTime]) attributeCodexToPersonal(period);
+    const configuredProfiles = normalizeCodexUsageProfiles(options.codexUsageProfiles, { homeDir: options.homeDir });
+    if (configuredProfiles.length > 0) {
+      try {
+        const collected = (options.collectCodexProfiles || collectCodexUsageProfiles)({
+          profiles: configuredProfiles,
+          homeDir: options.homeDir,
+          now: collectedAt,
+          allTimeSince,
+          cachePath: options.codexProfileCachePath || path.join(sharedDataDir(), 'codex-profile-usage-cache.json')
+        });
+        await applyCodexProfilePricing(collected.bundle, collected.pricingComponents, options.lookupModelPricing || lookupModelPricing);
+        usageProfiles = collected.metadata || publicProfileMetadata(configuredProfiles);
+        codexProfileStatus = collected.status || [];
+        profileBundle = collected.bundle;
+      } catch (error) {
+        if (typeof options.logger === 'function') options.logger(`Codex usage profiles could not be collected: ${error.code || error.name || 'error'}`);
+        usageProfiles = publicProfileMetadata(configuredProfiles);
+      }
+    }
+  }
+
+  today = profileBundle ? mergePeriods(today, profileBundle.today) : today;
+  if (anchorUsed) {
+    week = applyPeriodDelta(anchor.week, today, anchor.today);
+    month = applyPeriodDelta(anchor.month, today, anchor.today);
+    allTime = applyPeriodDelta(anchor.allTime, today, anchor.today);
+  } else if (profileBundle) {
+    week = mergePeriods(week, profileBundle.week);
+    month = mergePeriods(month, profileBundle.month);
+    allTime = mergePeriods(allTime, profileBundle.allTime);
   }
 
   // WSL contribution (Windows only; no-op elsewhere). Full tick scans running WSL
@@ -478,6 +590,9 @@ async function collectUsageOnce(options) {
       wslBundle = wslResult.bundle;
       wslDetected = wslResult.detected;
     }
+  }
+  if (codexEnabled) {
+    for (const period of [wslBundle.today, wslBundle.week, wslBundle.month, wslBundle.allTime]) attributeCodexToPersonal(period);
   }
   today = mergePeriods(windowsPeriods.today, wslBundle.today);
   week = mergePeriods(windowsPeriods.week, wslBundle.week);
@@ -523,7 +638,9 @@ async function collectUsageOnce(options) {
     agentVersion,
     ...(agentRuntime ? { agentRuntime } : {}),
     trackedClients: normalizedClients ? normalizedClients.split(',') : [],
-    clientStatus: deriveClientStatus(normalizedClients, allTime),
+    ...(usageProfiles.length ? { usageProfiles } : {}),
+    ...(codexProfileStatus.length ? { codexProfileStatus } : {}),
+    clientStatus: deriveClientStatus(normalizedClients, allTime, options),
     wslStatus,
     periodWindows: computePeriodWindows(collectedAt),
     today,
@@ -559,13 +676,14 @@ function dirExists(dir) {
 
 // Per-client data-dir candidates, keyed by client. Drives the detection-status
 // derivation and (minus the self-synced clients below) the chokidar watch list.
-function clientWatchCandidates(clientsCsv) {
-  const home = os.homedir();
+function clientWatchCandidates(clientsCsv, options = {}) {
+  const home = options.homeDir || os.homedir();
   const enabled = new Set(String(clientsCsv || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean));
   const byClient = {};
   const add = (client, ...dirs) => { if (enabled.has(client)) byClient[client] = dirs; };
   add('claude', path.join(home, '.claude', 'projects'), path.join(home, '.claude', 'transcripts'));
-  add('codex', path.join(home, '.codex', 'sessions'), path.join(home, '.codex', 'archived_sessions'));
+  const codexProfiles = normalizeCodexUsageProfiles(options.codexUsageProfiles, { homeDir: home });
+  add('codex', path.join(home, '.codex', 'sessions'), path.join(home, '.codex', 'archived_sessions'), ...codexProfiles.flatMap((profile) => [path.join(profile.root, 'sessions'), path.join(profile.root, 'archived_sessions')]));
   const hermesHome = resolveHermesHome({ env: process.env, homeDir: home });
   add('hermes', hermesHome, ...hermesProfileWatchDirs(hermesHome));
   add('opencode', path.join(home, '.local', 'share', 'opencode'));
@@ -663,9 +781,9 @@ function clientWatchCandidates(clientsCsv) {
 // Watching them turns every tick into the trigger for the next one (issue #15).
 const SELF_SYNCED_CLIENTS = new Set(['cursor', 'antigravity']);
 
-function watchPathsForClients(clientsCsv) {
+function watchPathsForClients(clientsCsv, options = {}) {
   const candidates = [];
-  for (const [client, dirs] of Object.entries(clientWatchCandidates(clientsCsv))) {
+  for (const [client, dirs] of Object.entries(clientWatchCandidates(clientsCsv, options))) {
     if (SELF_SYNCED_CLIENTS.has(client)) continue;
     candidates.push(...dirs);
   }
@@ -687,21 +805,24 @@ function localDateParts(date) {
 // started yesterday), using file size as the append signal. This is deliberately
 // narrow: recursively statting every tracked-client tree every two seconds would
 // reintroduce the load problem that the watcher path was designed to avoid.
-function codexLiveSessionSizeSnapshot(homeDir = os.homedir(), now = new Date()) {
+function codexLiveSessionSizeSnapshot(homeDir = os.homedir(), now = new Date(), additionalRoots = []) {
   const dates = [new Date(now), new Date(now)];
   dates[1].setDate(dates[1].getDate() - 1);
   const snapshot = new Map();
-  for (const date of dates) {
-    const dir = path.join(homeDir, '.codex', 'sessions', ...localDateParts(date));
-    let entries;
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { continue; }
-    for (const entry of entries) {
-      if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== '.jsonl') continue;
-      const filePath = path.join(dir, entry.name);
-      try {
-        const stat = fs.statSync(filePath);
-        if (stat.isFile()) snapshot.set(filePath, `${stat.size}:${stat.birthtimeMs}:${stat.ino || 0}`);
-      } catch (_) {}
+  const roots = [path.join(homeDir, '.codex'), ...additionalRoots];
+  for (const root of roots) {
+    for (const date of dates) {
+      const dir = path.join(root, 'sessions', ...localDateParts(date));
+      let entries;
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { continue; }
+      for (const entry of entries) {
+        if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== '.jsonl') continue;
+        const filePath = path.join(dir, entry.name);
+        try {
+          const stat = fs.statSync(filePath);
+          if (stat.isFile()) snapshot.set(filePath, `${stat.size}:${stat.birthtimeMs}:${stat.ino || 0}`);
+        } catch (_) {}
+      }
     }
   }
   return snapshot;
@@ -745,9 +866,9 @@ function watchIgnoreMatcher(clientsCsv) {
 }
 
 // Whether each tracked client has at least one data directory on disk.
-function clientDataDirPresence(clientsCsv) {
+function clientDataDirPresence(clientsCsv, options = {}) {
   const presence = {};
-  for (const [client, dirs] of Object.entries(clientWatchCandidates(clientsCsv))) {
+  for (const [client, dirs] of Object.entries(clientWatchCandidates(clientsCsv, options))) {
     presence[client] = dirs.some(dirExists);
   }
   return presence;
@@ -767,9 +888,9 @@ function statusFromSignals(clients, presence, usageClients) {
   return status;
 }
 
-function deriveClientStatus(clientsCsv, allTimePeriod) {
+function deriveClientStatus(clientsCsv, allTimePeriod, options = {}) {
   const clients = String(clientsCsv || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean);
-  return statusFromSignals(clients, clientDataDirPresence(clientsCsv), allTimePeriod?.clients || {});
+  return statusFromSignals(clients, clientDataDirPresence(clientsCsv, options), allTimePeriod?.clients || {});
 }
 
 // The frozen wslAnchor is only valid to merge into a preview period when it was
@@ -788,12 +909,16 @@ function wslPeriodsForPreview(wslAnchor, anchorDateKey, todayKey) {
   };
 }
 
-function configFingerprint(clientsCsv, allTimeSince) {
+function configFingerprint(clientsCsv, allTimeSince, codexUsageProfiles, options = {}) {
   // Deterministic string that captures the config inputs anchor correctness
   // depends on. The semantics suffix invalidates anchors written under an older
   // Week definition (tokscale's calendar --week, then a rolling seven-day
   // --since window) — bump it whenever the window itself changes.
-  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}|monday-week-v1`;
+  const configuredProfiles = normalizeCodexUsageProfiles(codexUsageProfiles, { homeDir: options.homeDir });
+  const profilePart = configuredProfiles.length
+    ? `|codex-profiles:${profileConfigFingerprint(codexUsageProfiles, { homeDir: options.homeDir })}`
+    : '';
+  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}${profilePart}|monday-week-v1`;
 }
 
 // Force a full scan at least this often even when the anchor is otherwise
@@ -850,7 +975,7 @@ function startCollector(options) {
   try {
     const saved = readJson(anchorPath, null);
     if (saved && saved.dateKey === localTodayKey() && saved.week) {
-      const fp = configFingerprint(clients, allTimeSince);
+      const fp = configFingerprint(clients, allTimeSince, options.codexUsageProfiles, options);
       if (saved.configFingerprint === fp) {
         anchor = { dateKey: saved.dateKey, today: saved.today, week: saved.week || emptyPeriod(), month: saved.month, allTime: saved.allTime };
         // Don't restore a persisted WSL snapshot when WSL scanning is now off —
@@ -914,6 +1039,9 @@ function startCollector(options) {
         onAnchorComputed: (x) => { captured = x; },
         onProgress: (partial) => {
           if (!partial.today) return;
+          // A partial tokscale-only preview would temporarily erase the profile
+          // split. Profile-enabled collections publish atomically at final update.
+          if (normalizeCodexUsageProfiles(options.codexUsageProfiles, { homeDir: options.homeDir }).length > 0) return;
           try {
             if (typeof onPreview === 'function') {
               // Frozen WSL snapshot, gated so a cross-day/cross-month full scan
@@ -951,7 +1079,7 @@ function startCollector(options) {
               // Only derive clientStatus when allTime is available; warm
               // scans carry the previous status forward in main.js.
               if (partial.allTime) {
-                preview.clientStatus = deriveClientStatus(clients, partial.allTime);
+                preview.clientStatus = deriveClientStatus(clients, partial.allTime, options);
               }
               onPreview(preview);
             }
@@ -977,7 +1105,7 @@ function startCollector(options) {
             allTime: anchor.allTime,
             wslBundle: wslAnchor,
             wslStatus: wslStatusAnchor,
-            configFingerprint: configFingerprint(clients, allTimeSince),
+            configFingerprint: configFingerprint(clients, allTimeSince, options.codexUsageProfiles, options),
             fullScanAt: new Date().toISOString()
           }));
         } catch (_) {}
@@ -1034,7 +1162,7 @@ function startCollector(options) {
 
   function setupWatchers() {
     if (!watchEnabled) return;
-    const dirs = watchPathsForClients(clients);
+    const dirs = watchPathsForClients(clients, options);
     if (dirs.length === 0) {
       log('No watchable client data directories found; relying on fallback interval only.');
       return;
@@ -1051,11 +1179,16 @@ function startCollector(options) {
         awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 }
       });
       watcher.on('all', (event, filePath) => scheduleTick(`watch:${event}:${path.basename(filePath || '')}`));
-      watcher.on('error', (error) => log(`chokidar error: ${error.message}`));
+      watcher.on('error', (error) => log(`chokidar error: ${error.code || error.name || 'error'}`));
       watchers.push(watcher);
-      for (const dir of dirs) log(`Watching ${dir} (polling 2s)`);
+      const privateRoots = normalizeCodexUsageProfiles(options.codexUsageProfiles, { homeDir: options.homeDir });
+      const privateDirs = new Set(privateRoots.flatMap((profile) => [path.join(profile.root, 'sessions'), path.join(profile.root, 'archived_sessions')]).map((dir) => path.resolve(dir)));
+      for (const dir of dirs) {
+        if (!privateDirs.has(path.resolve(dir))) log(`Watching ${dir} (polling 2s)`);
+      }
+      for (const profile of privateRoots) log(`Watching Codex usage profile ${profile.label} (polling 2s)`);
     } catch (error) {
-      log(`Cannot watch ${dirs.join(', ')}: ${error.message}`);
+      log(`Cannot watch configured client data directories: ${error.code || error.name || 'error'}`);
     }
   }
 
@@ -1067,10 +1200,11 @@ function startCollector(options) {
       ? options.watchPollIntervalMs
       : WATCH_POLL_INTERVAL_MS;
     const homeDir = options.homeDir || os.homedir();
-    let previous = codexLiveSessionSizeSnapshot(homeDir);
+    const additionalRoots = normalizeCodexUsageProfiles(options.codexUsageProfiles, { homeDir }).map((profile) => profile.root);
+    let previous = codexLiveSessionSizeSnapshot(homeDir, new Date(), additionalRoots);
     codexSizePollTimer = setInterval(() => {
       if (stopped) return;
-      const current = codexLiveSessionSizeSnapshot(homeDir);
+      const current = codexLiveSessionSizeSnapshot(homeDir, new Date(), additionalRoots);
       const changed = fileSizeSnapshotChanged(previous, current);
       previous = current;
       if (changed) scheduleTick('watch:size:codex');

@@ -95,3 +95,21 @@ test('session layout keeps page chrome consistent and lets details wrap', () => 
   assert.doesNotMatch(styles, /\.shell\.session-mode \.row-title\s*\{[^}]*white-space:\s*normal;/s);
   assert.match(styles, /\.shell\.session-mode \.row-detail\s*\{[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;/s);
 });
+
+test('session rows display profile labels and disable work transcript detail', () => {
+  const rows = sessionRowsForPeriod({
+    sessions: {
+      'codex:codex-work:same': {
+        client: 'codex', profileId: 'codex-work', sessionId: 'same', detailAvailable: false,
+        totalTokens: 20, models: { 'gpt-5': 20 }, lastUsedAt: localIso(2026, 5, 30, 12, 20)
+      }
+    }
+  }, {
+    clientLabels,
+    clientColors,
+    usageProfiles: [{ id: 'codex-work', client: 'codex', label: 'Work' }],
+    now: new Date(2026, 4, 30, 12, 30)
+  });
+  assert.equal(rows[0].name, 'Codex · Work · gpt-5');
+  assert.equal(rows[0].detailAvailable, false);
+});

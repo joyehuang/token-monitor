@@ -57,7 +57,11 @@ Example payload:
   "agentVersion": "0.3.0",
   "agentRuntime": "headless-agent",
   "trackedClients": ["codex"],
-    "today": {
+  "usageProfiles": [
+    { "id": "codex-personal", "client": "codex", "label": "Personal" },
+    { "id": "codex-work", "client": "codex", "label": "Work" }
+  ],
+  "today": {
     "totalTokens": 1234,
     "costUsd": 0.01,
     "cacheReadTokens": 1100,
@@ -97,6 +101,11 @@ Example payload:
       "codex": {
         "gpt-5": 1234
       }
+    },
+    "profiles": { "codex-personal": 700, "codex-work": 534 },
+    "profileModels": {
+      "codex-personal": { "gpt-5": 700 },
+      "codex-work": { "gpt-5": 534 }
     },
     "clientModelCosts": {
       "codex": {
@@ -185,6 +194,8 @@ The hub normalizes records before storing them.
 
 `trackedClients` is optional but recommended for agents and widgets. When it is present, the hub treats omitted clients as intentionally not collected in this payload and preserves their previous usage for that device. This keeps "tracking" as "collect future data" rather than "hide existing history".
 
+`usageProfiles` is optional public metadata (`id`, `client`, and display `label` only). Periods may include `profiles`, `profileCosts`, `profileCacheReads`, `profileCacheWrites`, `profileOutputs`, `profileModels`, and `profileModelCosts`. Additional-profile sessions are keyed by `client:profileId:sessionId`, carry `profileId`, and replace the source session id with a stable profile-scoped hash at the parse boundary; the default `codex-personal` source deliberately keeps the legacy `client:sessionId` key for compatibility. Source paths are configuration-only and must never appear in this wire shape. Additional Codex profiles set `detailAvailable: false`, so transcript detail cannot cross from a work log source into the existing personal-session detail flow.
+
 `week` is the device-local calendar week starting Monday (ISO-8601) and is required for current fork agents/widgets. For compatibility with upstream clients that send only `today`/`month`/`allTime`, the hub reconstructs an omitted `week` from full daily `history` plus the live `today` period. Until history is available, it uses `today` as the truthful lower bound and applies later same-day deltas, so an omitted field can never make Week smaller than Today. An explicitly supplied `week` always remains authoritative.
 
 `periodWindows` is optional. Agents and widgets stamp each snapshot with the UTC instant its `today`/`week`/`month` windows end, computed in the device's own local time (`endsAt` = next local midnight for `today`, next local Monday for `week`, next local month start for `month`). `key` is the device-local reference for the window: the day for `today`, the week's own Monday (`YYYY-MM-DD`) for `week`, the month for `month` — all three are calendar windows. The hub uses it to expire a device's `today`/`week`/`month` from the aggregate once `now >= endsAt`, so a device that goes offline before re-posting does not keep contributing a stale day/week/month snapshot (`allTime` never expires). Payloads without `periodWindows` fall back to a UTC day/week/month comparison against `updatedAt`.
@@ -209,7 +220,7 @@ Response includes:
 - `periods.month`
 - `periods.allTime`
 - `periods.*.clientModels` and `periods.*.clientModelCosts` for preserving model breakdowns when a tracked tool is disabled
-- `periods.*.sessions` keyed by `client:sessionId` for session-level usage when tokscale exposes session groups; widgets may use `lastUsedAt` for recent-first sorting when present
+- `periods.*.sessions` keyed by `client:sessionId` or `client:profileId:sessionId` for session-level usage; widgets may use `lastUsedAt` for recent-first sorting when present
 - `historyPreview.daily[].activeTimeMs`, `historyPreview.monthly[].activeTimeMs`, and `historyPreview.summary.activeTimeMs` when tokscale graph exposes session active-time metrics
 - `limits.providers` aggregated by provider account
 - `devices`

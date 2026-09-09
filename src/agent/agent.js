@@ -9,6 +9,7 @@ const { collectUsageOnce, normalizeHistoryIntervalMs, startCollector } = require
 const { normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders } = require('../shared/limitCollector');
 const { syncLimits } = require('../shared/limits');
 const { summaryForWire } = require('../shared/usage');
+const { normalizeCodexUsageProfileSettings } = require('../shared/codexUsageProfiles');
 
 loadDotEnv();
 const args = parseArgs(process.argv.slice(2));
@@ -29,8 +30,9 @@ const wslScanEnabled = parseBoolean(args.wslScan ?? args.wslScanEnabled ?? proce
 const opencodeCookie = String(process.env.TOKEN_MONITOR_OPENCODE_COOKIE || '').trim();
 const once = Boolean(args.once);
 const dryRun = Boolean(args['dry-run'] || args.dryRun);
+const codexUsageProfiles = normalizeCodexUsageProfileSettings(args.codexUsageProfiles ?? args['codex-usage-profiles'] ?? process.env.TOKEN_MONITOR_CODEX_USAGE_PROFILES);
 
-const collectorOptions = { clients, allTimeSince, commandTimeoutMs, deviceId, agentVersion: appVersion(), agentRuntime: 'headless-agent', historyEnabled, historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS), limitsEnabled, limitProviders, limitsRefreshMs, wslScanEnabled, opencodeCookie };
+const collectorOptions = { clients, allTimeSince, commandTimeoutMs, deviceId, agentVersion: appVersion(), agentRuntime: 'headless-agent', historyEnabled, historyIntervalMs: normalizeHistoryIntervalMs(process.env.TOKEN_MONITOR_HISTORY_INTERVAL_MS), limitsEnabled, limitProviders, limitsRefreshMs, wslScanEnabled, opencodeCookie, codexUsageProfiles };
 
 async function postUsage(summary) {
   const body = JSON.stringify({ ...summaryForWire(summary), limits: syncLimits(summary.limits) });
