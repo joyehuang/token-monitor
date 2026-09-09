@@ -1178,10 +1178,14 @@ function startCollector(options) {
         ...(ignored ? { ignored } : {}),
         awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 200 }
       });
-      watcher.on('all', (event, filePath) => scheduleTick(`watch:${event}:${path.basename(filePath || '')}`));
+      const privateRoots = normalizeCodexUsageProfiles(options.codexUsageProfiles, { homeDir: options.homeDir });
+      // Tick reasons also reach local-mode IPC/status and error logs. Once a
+      // private source is configured, never carry transcript filenames there.
+      watcher.on('all', (event, filePath) => scheduleTick(privateRoots.length
+        ? `watch:${event}:usage-metadata`
+        : `watch:${event}:${path.basename(filePath || '')}`));
       watcher.on('error', (error) => log(`chokidar error: ${error.code || error.name || 'error'}`));
       watchers.push(watcher);
-      const privateRoots = normalizeCodexUsageProfiles(options.codexUsageProfiles, { homeDir: options.homeDir });
       const privateDirs = new Set(privateRoots.flatMap((profile) => [path.join(profile.root, 'sessions'), path.join(profile.root, 'archived_sessions')]).map((dir) => path.resolve(dir)));
       for (const dir of dirs) {
         if (!privateDirs.has(path.resolve(dir))) log(`Watching ${dir} (polling 2s)`);
