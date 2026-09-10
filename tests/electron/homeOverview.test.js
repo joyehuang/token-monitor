@@ -422,6 +422,30 @@ test('shouldFetchHomeHistory stops once the full history is held', () => {
   assert.equal(shouldFetchHomeHistory({ homeHistory: historyWithDays, requested: true, preview: historyWithDays }), false);
 });
 
+test('shouldFetchHomeHistory refreshes when the preview advances past the loaded history', () => {
+  const loaded = {
+    daily: [{ date: '2026-09-01', tokens: 100 }],
+    monthly: [],
+    summary: {}
+  };
+  const preview = {
+    daily: [
+      { date: '2026-09-01', tokens: 100 },
+      { date: '2026-09-02', tokens: 200 },
+      { date: '2026-09-03', tokens: 300 }
+    ],
+    monthly: [],
+    summary: {}
+  };
+
+  assert.equal(shouldFetchHomeHistory({
+    homeHistory: loaded,
+    requested: true,
+    preview,
+    lastPreviewKey: historyPreviewKey(loaded)
+  }), true);
+});
+
 test('shouldFetchHomeHistory never polls a zero-usage account', () => {
   // Requested once, still no preview data — nothing to fetch, so don't poll on every render.
   assert.equal(shouldFetchHomeHistory({ homeHistory: emptyHistory, requested: true, preview: emptyHistory }), false);

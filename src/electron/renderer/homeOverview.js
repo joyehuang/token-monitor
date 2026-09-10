@@ -251,6 +251,14 @@
     return Array.isArray(history?.daily) && history.daily.length > 0;
   }
 
+  function latestHistoryDate(history) {
+    if (!historyHasDays(history)) return '';
+    return history.daily.reduce((latest, day) => {
+      const date = String(day?.date || '').slice(0, 10);
+      return date > latest ? date : latest;
+    }, '');
+  }
+
   // Which history source the home activity/trends module renders. Prefer the
   // full-year homeHistory (fetched on demand), but fall back to the compact stats
   // preview while it loads — an empty homeHistory must never shadow real preview
@@ -294,15 +302,18 @@
     return `${daily.length}:${last.date || ''}:${last.tokens || 0}`;
   }
 
-  // Whether loadHomeHistory should (re)fetch the full history. The first fetch can
-  // race the local collector at cold start and return empty; don't let that stick —
-  // refetch once the stats preview confirms history exists, but only when the preview
-  // has actually changed since the last attempt (so one bad fetch can't loop), stop
-  // once we hold the full data, and never poll a genuinely zero-usage account (#39).
+  // Whether loadHomeHistory should (re)fetch the full history. Refresh when the
+  // compact preview advances to a later calendar day than the loaded full history;
+  // otherwise an app left running across midnight permanently renders those new days
+  // as zero. The preview key still limits failed/stale fetches to one attempt per
+  // preview state, so loadHomeHistory's finally-render cannot create a request loop.
+  // Same-day token growth needs no refetch because Home patches today from live stats.
   function shouldFetchHomeHistory({ homeHistory, requested, preview, lastPreviewKey } = {}) {
-    if (historyHasDays(homeHistory)) return false;
-    if (!requested) return true;
     const key = historyPreviewKey(preview);
+    if (historyHasDays(homeHistory)) {
+      return latestHistoryDate(preview) > latestHistoryDate(homeHistory) && key !== lastPreviewKey;
+    }
+    if (!requested) return true;
     if (!key) return false;
     return key !== lastPreviewKey;
   }
