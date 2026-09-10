@@ -88,3 +88,12 @@ test('readonly quota uses existing polling cache', async (t) => {
 test('unlinking the last readonly source never resumes automatic live RPC', async () => {
   assert.deepEqual(await fetchCodexLimits({ codexReadonlyMode: true, codexAccountSources: [] }, { readCodexRpc: () => assert.fail('unexpected RPC') }), []);
 });
+
+test('an unpinned readonly source does not hide a different managed account', async (t) => {
+  const source = fixture(t); let rpcCalls = 0;
+  const result = await fetchCodexLimits({ codexAccountSources: [source], codexManagedAccounts: [{ id: 'managed-fixture', homePath: path.join(source.path, 'managed') }] }, {
+    readCodexRpc: async () => { rpcCalls++; return { rateLimits: { primary: { usedPercent: 5, windowDurationMins: 300 } } }; },
+    fetch: async () => ({ ok: true, json: async () => response })
+  });
+  assert.equal(rpcCalls, 1); assert.equal(result.length, 2);
+});

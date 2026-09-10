@@ -2209,7 +2209,7 @@ async function fetchCodexLimits(options = {}, deps = {}) {
     const result = [];
     for (const source of readonlySources) result.push(await fetchReadonlyCodexAccount(source, deps));
     for (const account of normalizeCodexManagedAccounts(options.codexManagedAccounts).filter((a) => a.enabled)) {
-      if (readonlySources.some((source) => source.path === account.homePath || source.accountKey === account.accountKey)) continue;
+      if (readonlySources.some((source) => source.path === account.homePath || (source.accountKey && source.accountKey === account.accountKey))) continue;
       const provider = await fetchManagedCodexAccountLimits(account, options, deps);
       if (!result.some((entry) => entry.accountKey === provider.accountKey)) result.push(provider);
     }
