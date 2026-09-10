@@ -4,7 +4,7 @@ const DEFAULT_LIMITS_REFRESH_MS = 5 * 60 * 1000;
 const VALID_PROVIDERS = new Set(['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'deepseek', 'minimax', 'grok', 'copilot', 'kiro']);
 const VALID_STATUSES = new Set(['ok', 'disabled', 'notConfigured', 'unauthorized', 'rateLimited', 'sourceRateLimited', 'unavailable', 'error']);
 const VALID_SOURCES = new Set(['oauth', 'cli', 'web', 'rpc', 'local', 'api']);
-const VALID_SOURCE_DETAILS = new Set(['app', 'cli', 'managed', 'unknown']);
+const VALID_SOURCE_DETAILS = new Set(['app', 'cli', 'managed', 'readonly', 'unknown']);
 const WINDOW_ORDER = ['session', 'weekly', 'billing'];
 const TRANSIENT_LIMIT_RETENTION_MS = 15 * 60 * 1000;
 const TRANSIENT_LIMIT_STATUSES = new Set(['sourceRateLimited', 'unavailable', 'error']);
@@ -311,6 +311,7 @@ function mergeTransientLimitProviders(
   return {
     ...current,
     providers: current.providers.map((provider) => {
+      if (provider.sourceDetail === 'readonly') return provider;
       if (!TRANSIENT_LIMIT_STATUSES.has(provider.status)) return provider;
       const previousProvider = previousProviderForTransient(previous.providers, provider);
       if (!previousProvider) return provider;
@@ -323,6 +324,9 @@ function mergeTransientLimitProviders(
 
 function pickBetterProvider(current, candidate) {
   if (!current) return candidate;
+  if (current.sourceDetail === 'readonly' || candidate.sourceDetail === 'readonly') {
+    return timestampMs(candidate.updatedAt) >= timestampMs(current.updatedAt) ? candidate : current;
+  }
   if (current.stale !== candidate.stale) return current.stale ? candidate : current;
   const rankDiff = statusRank(candidate.status) - statusRank(current.status);
   if (rankDiff !== 0) return rankDiff > 0 ? candidate : current;

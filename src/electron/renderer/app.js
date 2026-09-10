@@ -1642,6 +1642,7 @@ function limitWindowNode(label, window, color, tone = 1, valueOverride = null, d
   meter.append(fill);
   const reset = document.createElement('div');
   reset.className = 'limit-reset';
+  if (window?.resetsAt) reset.title = new Date(window.resetsAt).toLocaleString();
   const resetText = window?.resetsAt
     ? formatReset(window.resetsAt)
     : window?.resetDescription || '';
@@ -1752,7 +1753,7 @@ function renderProviderWindows(provider, color) {
     const session = windowForKind(provider, 'session');
     const weekly = windowForKind(provider, 'weekly');
     if (session) {
-      const sessionNode = limitWindowNode(session.label || 'Session', session, color, 0.95);
+      const sessionNode = limitWindowNode(session.label || (session.windowMinutes === 300 ? '5h' : 'Session'), session, color, 0.95);
       if (!weekly) sessionNode.classList.add('limit-window-wide');
       windows.append(sessionNode);
     }
@@ -1761,7 +1762,16 @@ function renderProviderWindows(provider, color) {
       if (!session) weeklyNode.classList.add('limit-window-wide');
       windows.append(weeklyNode);
     }
-    const resetNode = codexResetCreditsNode(provider.resetCredits);
+    if (provider.sourceDetail === 'readonly') {
+      for (const [missing, title] of [[!session, '5h'], [!weekly, 'Weekly']]) {
+        if (!missing) continue;
+        const unknown = document.createElement('div');
+        unknown.className = 'limit-window account-quota-unknown';
+        unknown.textContent = `${title}: unknown · reset unknown`;
+        if (title === '5h') windows.prepend(unknown); else windows.append(unknown);
+      }
+    }
+    const resetNode = provider.sourceDetail === 'readonly' ? null : codexResetCreditsNode(provider.resetCredits);
     if (resetNode) windows.append(resetNode);
   } else if (provider.provider === 'cursor') {
     windows.classList.add('limit-windows-cursor');
@@ -1914,31 +1924,44 @@ function renderLimitProviderRow(id, label, provider, color, options = {}) {
 }
 
 function codexAccountTitle(provider, index) {
-  const email = String(provider?.accountEmail || '').trim();
-  if (email) return email;
-  // Never fall back to the plan label here — "Plus" as a title reads like an
-  // account name. The plan still shows on the right via limitProviderPlan().
-  return `Account ${index + 1}`;
+  return provider?.accountName || `Account ${index + 1}`;
 }
 
 function renderCodexAccountGroup(label, providers, color) {
   const row = document.createElement('div');
-  row.className = `limit-row limit-row-group${providers.some((provider) => provider.stale) ? ' stale' : ''}`;
-  const groupProvider = { provider: 'codex', status: 'ok', windows: [] };
-  const head = renderLimitProviderHead('codex', label, groupProvider, color, {
-    planText: `${providers.length} accounts`,
-    hideMeta: true
+  row.className = 'limit-row limit-row-group';
+  const accounts = window.TokenMonitorAccountOverview.accountRows(state.stats, providers);
+  const head = renderLimitProviderHead('codex', 'Accounts', { provider: 'codex', status: 'ok', windows: [] }, color, {
+    planText: `${accounts.length} accounts / sources`, hideMeta: true
   });
   const accountList = document.createElement('div');
   accountList.className = 'limit-account-list';
-  providers.forEach((provider, index) => {
-    accountList.append(renderLimitProviderRow('codex', codexAccountTitle(provider, index), provider, color, {
-      accountRow: true,
-      accountTitle: true,
-      showIcon: false
-    }));
-  });
-  row.append(head, accountList);
+  for (const account of accounts) {
+    const provider = account.provider || { provider: 'codex', status: 'notConfigured', windows: [] };
+    const item = renderLimitProviderRow('codex', account.label, provider, color, {
+      accountRow: true, accountTitle: true, showIcon: false, ...(account.provider ? {} : { planText: 'Quota unlinked' })
+    });
+    const usage = document.createElement('div');
+    usage.className = 'account-usage-grid';
+    for (const [key, title] of [['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['allTime', 'Total']]) {
+      const cell = document.createElement('div');
+      const heading = document.createElement('span');
+      heading.textContent = title;
+      const count = document.createElement('strong');
+      count.textContent = account.periods[key] === undefined ? '—' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 2 }).format(account.periods[key]);
+      count.title = account.periods[key] === undefined ? 'Unknown usage' : `${account.periods[key].toLocaleString()} tokens`;
+      cell.append(heading, count); usage.append(cell);
+    }
+    const meta = document.createElement('div');
+    meta.className = 'account-source-note';
+    meta.textContent = `${account.sources.join(' · ') || 'No linked token source'}\nTokens sampled: ${account.updatedAt ? new Date(account.updatedAt).toLocaleString() : 'unknown'}\nQuota: ${provider.sourceDetail === 'readonly' ? 'read-only external profile · ' : ''}${provider.status === 'unauthorized' ? 'expired / unauthorized' : provider.status}${provider.stale ? ' · stale' : ''} · ${provider.updatedAt ? new Date(provider.updatedAt).toLocaleString() : 'unknown'}${provider.sourceDeviceId ? ` · ${provider.sourceDeviceId}` : ''}`;
+    item.insertBefore(usage, item.children[1]);
+    item.append(meta); accountList.append(item);
+  }
+  const note = document.createElement('div');
+  note.className = 'account-source-note';
+  note.textContent = 'Tokens: device-local calendar day / Monday week / month; Total since configured start. Quota: separate 5h / weekly plan windows, not token totals. Read-only profiles never refresh or switch login.';
+  row.append(head, accountList, note);
   return row;
 }
 
@@ -1989,7 +2012,7 @@ function renderLimits() {
       ? providerEntries
       : { provider: id, status: 'disabled', windows: [] };
     const color = clientColors[id] || clientColors.default;
-    if (id === 'codex' && Array.isArray(visibleProviders) && visibleProviders.length > 1) {
+    if (id === 'codex' && Array.isArray(visibleProviders)) {
       nodes.push(renderCodexAccountGroup(label, visibleProviders, color));
       continue;
     }
@@ -5088,6 +5111,22 @@ function renderWslPanel() {
   }
 }
 
+function readonlyQuotaButton(id) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  const configured = (state.settings?.codexAccountSources || []).some((entry) => entry.id === id);
+  button.textContent = configured ? 'Unlink read-only quota' : 'Link read-only quota';
+  button.title = 'Read existing access token only; never refresh or change login. POSIX requires private auth file; Windows checks readability, not NTFS ACLs.';
+
+  button.addEventListener('click', async () => {
+    const result = await window.tokenMonitor.enableCodexReadonlyQuota(id);
+    if (result?.ok) {
+      state.settings.codexAccountSources = result.sources; renderCodexUsageProfiles();
+    } else button.textContent = result?.status || 'Unknown';
+  });
+  return button;
+}
+
 function renderCodexUsageProfiles() {
   if (!els.codexUsageProfileList) return;
   els.codexUsageProfileList.replaceChildren();
@@ -5096,7 +5135,7 @@ function renderCodexUsageProfiles() {
   const personalLabel = document.createElement('span');
   personalLabel.className = 'codex-usage-profile-label';
   personalLabel.textContent = 'Personal · default';
-  personal.append(personalLabel);
+  personal.append(personalLabel, readonlyQuotaButton('codex-personal'));
   els.codexUsageProfileList.append(personal);
   const statuses = localCodexProfileStatus();
   for (const profile of (state.settings?.codexUsageProfiles || [])) {
@@ -5105,6 +5144,7 @@ function renderCodexUsageProfiles() {
     const label = document.createElement('span');
     label.className = 'codex-usage-profile-label';
     label.textContent = profile.label || 'Work';
+    row.append(readonlyQuotaButton(profile.id));
     const status = statuses.get(profile.id);
     if (status) {
       const tag = document.createElement('span');

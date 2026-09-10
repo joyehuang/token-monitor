@@ -22,6 +22,7 @@ const { applyCustomPricing, normalizeCustomPricingSetting } = require('../shared
 const { createHub } = require('../hub/server');
 const { deepseekToken, normalizeLimitsRefreshMs, parseBoolean, parseLimitProviders, runCodexLogin, minimaxToken, copilotToken } = require('../shared/limitCollector');
 const { copilotLoginErrorMessage, isAllowedVerificationUrl, runCopilotDeviceFlowLogin } = require('../shared/copilotDeviceFlow');
+const { normalizeAccountSources, readAccountCredential } = require('../shared/codexAccountSources');
 const { codexAuthIdentity, hashAccountKey } = require('../shared/codexAuth');
 const {
   normalizeClientDisplayOrder,
@@ -242,6 +243,8 @@ function defaultSettings() {
     copilotApiToken: '',
     copilotEnterpriseHost: '',
     codexManagedAccounts: [],
+    codexAccountSources: [],
+    codexReadonlyMode: false,
     codexUsageProfiles: normalizeCodexUsageProfileSettings(process.env.TOKEN_MONITOR_CODEX_USAGE_PROFILES),
     appUpdate: {
       lastCheckedAt: null,
@@ -1335,6 +1338,8 @@ function startSyncCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    codexAccountSources: settings.codexAccountSources,
+    codexReadonlyMode: settings.codexReadonlyMode === true,
     codexUsageProfiles: settings.codexUsageProfiles,
     limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: async (summary) => {
@@ -1387,6 +1392,8 @@ function startHostCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    codexAccountSources: settings.codexAccountSources,
+    codexReadonlyMode: settings.codexReadonlyMode === true,
     codexUsageProfiles: settings.codexUsageProfiles,
     limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: (summary) => {
@@ -1589,6 +1596,8 @@ function startLocalCollector() {
     copilotApiToken: settings.copilotApiToken || '',
     copilotEnterpriseHost: settings.copilotEnterpriseHost || '',
     codexManagedAccounts: codexManagedAccountsForCollector(),
+    codexAccountSources: settings.codexAccountSources,
+    codexReadonlyMode: settings.codexReadonlyMode === true,
     codexUsageProfiles: settings.codexUsageProfiles,
     limitCollectorDeps: electronLimitCollectorDeps,
     onUpdate: (summary, reason) => {
@@ -1802,6 +1811,7 @@ function settingsForRenderer() {
       : '';
   return {
     ...settings,
+    codexAccountSources: (settings?.codexAccountSources || []).map(({ id, label }) => ({ id, label, mode: 'readonly' })),
     // Usage-source paths stay in the main-process settings store. The renderer
     // only needs stable ids and labels to configure/display attribution.
     codexUsageProfiles: (settings?.codexUsageProfiles || []).map(({ id, label, enabled }) => ({ id, label, enabled: enabled !== false })),
@@ -2662,6 +2672,8 @@ app.whenReady().then(async () => {
     const previousCustomModelPricing = JSON.stringify(settings.customModelPricing || []);
     const normalizedCurrency = patch.currency !== undefined ? normalizeCurrency(patch.currency, settings.currency) : normalizeCurrency(settings.currency);
     const normalizedPatch = { ...patch, currency: normalizedCurrency };
+    delete normalizedPatch.codexReadonlyMode;
+    delete normalizedPatch.codexAccountSources;
     delete normalizedPatch.codexManagedAccounts;
     delete normalizedPatch.codexUsageProfiles;
     delete normalizedPatch.customModelPricing;
@@ -2932,6 +2944,23 @@ app.whenReady().then(async () => {
     const { client, sessionId, period, sessionCost } = args || {};
     return readSessionDetail({ client, sessionId, period, sessionCost, home: os.homedir() });
   });
+  ipcMain.handle('codexUsageProfiles:quota', (_event, id) => {
+    const profiles = [{ id: 'codex-personal', label: 'Personal', root: path.join(os.homedir(), '.codex') }, ...normalizeCodexUsageProfiles(settings.codexUsageProfiles)];
+    const profile = profiles.find((entry) => entry.id === id);
+    if (!profile) return { ok: false, status: 'notConfigured' };
+    const existing = normalizeAccountSources(settings.codexAccountSources);
+    settings.codexReadonlyMode = true;
+    if (existing.some((entry) => entry.id === id)) {
+      settings.codexAccountSources = existing.filter((entry) => entry.id !== id);
+      saveSettings(); startMode();
+      return { ok: true, sources: settingsForRenderer().codexAccountSources };
+    }
+    const source = { id: profile.id, label: profile.label, path: profile.root, profileIds: [profile.id] };
+    try { source.accountKey = readAccountCredential(source).accountKey; } catch (_) { return { ok: false, status: 'unknown / check file permissions and existing login' }; }
+    if (!existing.some((entry) => entry.path === source.path)) settings.codexAccountSources = [...existing, source];
+    saveSettings(); startMode();
+    return { ok: true, sources: settingsForRenderer().codexAccountSources };
+  });
   ipcMain.handle('codexUsageProfiles:add', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
@@ -2952,6 +2981,8 @@ app.whenReady().then(async () => {
     return { ok: true, profiles: settingsForRenderer().codexUsageProfiles };
   });
   ipcMain.handle('codexUsageProfiles:remove', (_event, id) => {
+    if ((settings.codexAccountSources || []).length) settings.codexReadonlyMode = true;
+    settings.codexAccountSources = normalizeAccountSources(settings.codexAccountSources).filter((source) => source.id !== id);
     settings.codexUsageProfiles = (settings.codexUsageProfiles || []).filter((profile) => profile.id !== String(id || ''));
     saveSettings();
     startMode();

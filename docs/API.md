@@ -262,3 +262,44 @@ additional Codex home. Profiles identify configured session sources, not
 verified accounts. Configure each source once; do not copy sessions between
 independently named profiles. These settings do not configure subscription
 5-hour/weekly limits, authentication, login, or token refresh.
+
+### Unified account usage and read-only quota (fork)
+
+`usageProfiles[]` may include `accountKey` (only `sha256:<64 hex>`) and a safe
+`accountName`. These are explicit local source bindings, not guesses from model
+names. Period `profiles` / `profileCosts` also include `pi-openai-codex` and
+`pi-openai-codex-agent`; they are subdivisions of Pi totals, never extra usage.
+Codex CLI and Pi requests are additive. A repeated configured directory is read
+once. Copied logs on separate devices are not automatically deduplicated.
+Unknown bindings and WSL homes remain unlinked. Device `periodWindows` accompanies
+aggregate device rows so expired calendar token windows are not shown as current.
+
+The private widget setting `codexAccountSources` is an array of
+`{id, label, path, profileIds, accountKey?}`. `path` is an explicitly selected
+Codex home; `profileIds` binds existing usage sources to that account. The optional
+opaque `accountKey` pins the identity and retains a safe association if auth later
+expires or disappears; a changed identity is rejected. Conflicting bindings stay
+unknown. Never put credentials in this setting. The existing usage-profile rows
+have a **Link read-only quota** action, including the default Personal source.
+Unlinking revokes that source; removing its usage profile also removes its quota source. The GUI retains `codexReadonlyMode: true` after unlinking the last source, so automatic live RPC does not silently resume.
+Extra directory selection still uses the existing usage folder picker. Labels
+are local configuration, not emails. Pi bindings require explicit local mapping
+based on verified provider identity; a model name is never evidence.
+
+When read-only sources are configured, they replace automatic live Codex RPC
+probing; existing managed accounts remain separate unless the same source/key is
+already configured. Include Personal explicitly to keep its quota visible.
+Read-only sources use existing access tokens with GET to the official usage
+endpoint and the existing five-minute quota cache. They never invoke login, RPC,
+refresh, token writes, or external profile endpoint configuration. POSIX checks
+require current-user ownership, a private auth file and a non-writable-by-others
+source directory; symlink auth files are rejected. Windows checks file readability
+and regular-file identity, not NTFS ACLs. Missing/expired/401/error samples have
+empty windows and accurate status; there is no fallback to another login.
+
+Quota providers use `sourceDetail: "readonly"`, `accountName`, an opaque account
+key and no email. Same-key samples across devices are selected by latest check,
+never summed. A latest failed check remains failed instead of presenting an older
+success as live. Account rows show separate token and quota sampling times and
+source devices. Calendar token week starts Monday; quota 5h/weekly reset times
+come from the provider. USD estimates are not subscription spending.

@@ -10,6 +10,7 @@ const { readJson, sharedDataDir, writeJsonAtomic } = require('./config');
 const { appVersion } = require('./appVersion');
 const { normalizeClientsCsv } = require('./clientTracking');
 const { tokscalePackageNameForPlatform, tokscalePlatformKey } = require('./tokscalePlatform');
+const { bindUsageProfiles } = require('./codexAccountSources');
 const { applyPeriodDelta, emptyPeriod, extractUsageFromTokscale, localWeekKey, mergePeriods, startOfLocalWeek } = require('./usage');
 const { collectWslUsage: collectWslUsageImpl, emptyWslBundle, probeWslState: probeWslStateImpl } = require('./wslUsage');
 const { hermesProfileWatchDirs, resolveHermesHome } = require('./hermesProfiles');
@@ -603,7 +604,16 @@ async function collectUsageOnce(options) {
     }
   }
   if (codexEnabled) {
-    for (const period of [wslBundle.today, wslBundle.week, wslBundle.month, wslBundle.allTime]) attributeCodexToPersonal(period);
+    for (const period of [wslBundle.today, wslBundle.week, wslBundle.month, wslBundle.allTime]) {
+      attributeCodexToPersonal(period);
+      for (const field of ['profiles', 'profileCosts', 'profileCacheReads', 'profileCacheWrites', 'profileOutputs', 'profileModels', 'profileModelCosts']) {
+        if (period[field]?.['codex-personal'] !== undefined) {
+          period[field]['codex-wsl'] = period[field]['codex-personal'];
+          delete period[field]['codex-personal'];
+        }
+      }
+    }
+    if (wslBundle.allTime.clients?.codex) usageProfiles.push({ id: 'codex-wsl', client: 'codex', label: 'WSL (unlinked)' });
   }
   today = mergePeriods(windowsPeriods.today, wslBundle.today);
   week = mergePeriods(windowsPeriods.week, wslBundle.week);
@@ -641,6 +651,10 @@ async function collectUsageOnce(options) {
     options.onAnchorComputed({ windowsPeriods, wslBundle, wslStatus });
   }
 
+  if (normalizedClients.split(',').includes('pi')) {
+    usageProfiles.push(...['openai-codex', 'openai-codex-agent'].map((provider) => ({ id: `pi-${provider}`, client: 'pi', label: `Pi ${provider}` })));
+  }
+  usageProfiles = bindUsageProfiles(usageProfiles, options.codexAccountSources);
   const summary = {
     deviceId,
     hostname: os.hostname(),
@@ -929,7 +943,7 @@ function configFingerprint(clientsCsv, allTimeSince, codexUsageProfiles, options
   const profilePart = configuredProfiles.length
     ? `|codex-profiles:${profileConfigFingerprint(codexUsageProfiles, { homeDir: options.homeDir })}`
     : '';
-  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}${profilePart}|monday-week-v1|provider-sources-v1`;
+  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}${profilePart}|monday-week-v1|provider-sources-v2`;
 }
 
 // Force a full scan at least this often even when the anchor is otherwise

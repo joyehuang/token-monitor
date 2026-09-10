@@ -19,6 +19,7 @@ const opencodeLimits = require('./opencodeLimits');
 const opencodeWeb = require('./opencodeWeb');
 const { sharedDataDir } = require('./config');
 const { recordConsumption } = require('./deepseekBalanceHistory');
+const { normalizeAccountSources, readAccountCredential } = require('./codexAccountSources');
 const { codexAuthIdentity } = require('./codexAuth');
 const minimaxLimits = require('./minimaxLimits');
 const { minimaxToken, minimaxBaseUrl, parseMinimaxTiers, fetchMinimaxLimits } = minimaxLimits;
@@ -1337,6 +1338,7 @@ async function fetchCodexUsage(deps = {}) {
   try {
     const response = await fetchFn(url, {
       method: 'GET',
+      redirect: 'error',
       headers: codexOAuthHeaders(accessToken, accountId),
       ...(controller ? { signal: controller.signal } : {})
     });
@@ -1455,6 +1457,7 @@ async function fetchCodexResetCredits(deps = {}) {
   try {
     const response = await fetchFn(url, {
       method: 'GET',
+      redirect: 'error',
       headers: codexOAuthHeaders(accessToken, accountId),
       ...(controller ? { signal: controller.signal } : {})
     });
@@ -2175,8 +2178,43 @@ async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now()) {
   });
 }
 
+async function fetchReadonlyCodexAccount(source, deps = {}) {
+  const updatedAt = nowIso((deps.now || Date.now)());
+  const meta = { provider: 'codex', accountKey: source.accountKey || hashKey('codex-unlinked-source', os.hostname(), source.path, source.id), accountName: source.label, source: 'oauth', sourceDetail: 'readonly', updatedAt };
+  try {
+    const credential = readAccountCredential(source, deps);
+    meta.accountKey = credential.accountKey;
+    if (credential.expired) throw errorWithStatus('unauthorized', 'Expired access token');
+    // Reuse HTTP parsing, but pin the official endpoint and in-memory credential.
+    // Never consult external config.toml, RPC, reset-credit mutation, or refresh.
+    const usage = await fetchCodexUsage({
+      ...deps, env: {}, codexAuthPath: 'memory-auth', codexConfigPath: 'no-config',
+      codexAccountId: credential.accountId,
+      readFileSync: (name) => {
+        if (name !== 'memory-auth') throw new Error('No external config');
+        return JSON.stringify({ access_token: credential.accessToken });
+      }
+    });
+    const mapped = mapCodexRateLimitsToProvider(usage, meta);
+    return normalizeLimitProvider({ ...mapped, ...meta, status: mapped.windows.length ? mapped.status : 'unavailable', resetCredits: null, accountEmail: '' });
+  } catch (error) {
+    return normalizeLimitProvider({ ...meta, status: providerStatusFromError(error), windows: [] });
+  }
+}
+
 async function fetchCodexLimits(options = {}, deps = {}) {
   const nowMs = (deps.now || Date.now)();
+  const readonlySources = normalizeAccountSources(options.codexAccountSources);
+  if (readonlySources.length || options.codexReadonlyMode === true) {
+    const result = [];
+    for (const source of readonlySources) result.push(await fetchReadonlyCodexAccount(source, deps));
+    for (const account of normalizeCodexManagedAccounts(options.codexManagedAccounts).filter((a) => a.enabled)) {
+      if (readonlySources.some((source) => source.path === account.homePath || source.accountKey === account.accountKey)) continue;
+      const provider = await fetchManagedCodexAccountLimits(account, options, deps);
+      if (!result.some((entry) => entry.accountKey === provider.accountKey)) result.push(provider);
+    }
+    return result;
+  }
   const managedAccounts = normalizeCodexManagedAccounts(options.codexManagedAccounts || deps.codexManagedAccounts)
     .filter((account) => account.enabled !== false);
   // Single live account: keep the original single-provider shape (and error
@@ -2797,6 +2835,7 @@ module.exports = {
   fetchSingleOpenCodeProfile,
   fetchClaudeLimits,
   fetchCodexLimits,
+  fetchReadonlyCodexAccount,
   fetchCursorLimits,
   fetchDeepSeekLimits,
   runCodexLogin,

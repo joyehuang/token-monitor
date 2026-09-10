@@ -183,7 +183,9 @@ function normalizeUsageProfiles(value) {
     const label = String(item.label || '').replace(/[\r\n\t]/g, ' ').trim().slice(0, 48);
     if (!id || !client || !label || seen.has(id)) continue;
     seen.add(id);
-    profiles.push({ id, client, label });
+    const accountKey = /^sha256:[a-f0-9]{64}$/.test(item.accountKey || '') ? item.accountKey : '';
+    const accountName = String(item.accountName || '').replace(/[^a-z0-9 ._-]/gi, '').slice(0, 32);
+    profiles.push({ id, client, label, ...(accountKey ? { accountKey, accountName } : {}) });
   }
   return profiles;
 }
@@ -780,6 +782,14 @@ function extractUsageFromTokscale(json) {
     const output = Math.max(0, Math.round(firstNumber(row, OUTPUT_TOKEN_KEYS)));
     let model = detectModel(row);
     if (client === 'cursor' && model === 'auto') model = 'cursor-auto';
+    if (client === 'pi') {
+      const provider = normalizeProviderName(row.provider);
+      if (['openai-codex', 'openai-codex-agent'].includes(provider)) {
+        const id = `pi-${provider}`;
+        period.profiles[id] = (period.profiles[id] || 0) + Math.max(0, Math.round(tokens));
+        period.profileCosts[id] = (period.profileCosts[id] || 0) + cost;
+      }
+    }
     period.totalTokens += Math.max(0, Math.round(tokens));
     period.costUsd += cost;
     period.cacheReadTokens += cacheRead;
@@ -1167,6 +1177,7 @@ function aggregateDevices(devices, staleAfterMs, nowMs = Date.now()) {
       ...(hasOwn(normalized, 'codexProfileStatus') ? { codexProfileStatus: normalized.codexProfileStatus } : {}),
       ...(hasOwn(normalized, 'clientStatus') ? { clientStatus: normalized.clientStatus } : {}),
       ...(hasOwn(normalized, 'wslStatus') ? { wslStatus: normalized.wslStatus } : {}),
+      periodWindows: normalized.periodWindows,
       periods: normalized.periods,
       limits: normalized.limits
     });

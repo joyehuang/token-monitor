@@ -142,7 +142,7 @@
     // AND this device has no login of its own for the account; when both devices
     // are signed in, the remote record is selected but the badge still belongs.
     if (provenance && provenance.selectedIsRemote && !provenance.hasLocalCandidate) return false;
-    return sourceDetailId(provider) !== 'managed';
+    return !['managed', 'readonly'].includes(sourceDetailId(provider));
   }
 
   function isLinkedStatus(provider) {
@@ -221,6 +221,7 @@
 
   function preferredAccountEntry(current, candidate) {
     if (!current) return candidate;
+    if (current.sourceDetail === 'readonly' || candidate.sourceDetail === 'readonly') return providerTimestamp(candidate) >= providerTimestamp(current) ? candidate : current;
     if (Boolean(current.stale) !== Boolean(candidate.stale)) return current.stale ? candidate : current;
     const statusDiff = providerStatusRank(candidate) - providerStatusRank(current);
     if (statusDiff !== 0) return statusDiff > 0 ? candidate : current;
@@ -260,6 +261,16 @@
     }
     const deduped = [];
     for (const entries of byProvider.values()) {
+      if (entries.some((entry) => entry.sourceDetail === 'readonly')) {
+        const keys = new Map();
+        for (const entry of entries) {
+          const key = entry.accountKey || `unknown:${entry.sourceDeviceId || ''}`;
+          if (!keys.has(key)) keys.set(key, []);
+          keys.get(key).push(entry);
+        }
+        for (const bucket of keys.values()) deduped.push(withMergedAccountIdentity(bucket));
+        continue;
+      }
       const emails = new Set(entries.map(accountEmailKey).filter(Boolean));
       if (emails.size <= 1) {
         deduped.push(withMergedAccountIdentity(entries));

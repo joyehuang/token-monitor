@@ -37,7 +37,7 @@ test('configFingerprint normalizes clients and includes allTimeSince', () => {
   const b = configFingerprint('claude,codex', '2024-01-01');
   // whitespace-normalised to the same value
   assert.equal(a, b, 'whitespace should be normalized');
-  assert.equal(a, 'claude,codex|2024-01-01|monday-week-v1|provider-sources-v1');
+  assert.equal(a, 'claude,codex|2024-01-01|monday-week-v1|provider-sources-v2');
 
   const c = configFingerprint('claude', '2024-01-01');
   assert.notEqual(a, c, 'different clients should differ');
@@ -48,13 +48,13 @@ test('configFingerprint normalizes clients and includes allTimeSince', () => {
 
 test('configFingerprint handles undefined and empty clients', () => {
   const a = configFingerprint(undefined, '2024-01-01');
-  assert.equal(a, '|2024-01-01|monday-week-v1|provider-sources-v1', 'undefined clients should produce empty string before pipe');
+  assert.equal(a, '|2024-01-01|monday-week-v1|provider-sources-v2', 'undefined clients should produce empty string before pipe');
 
   const b = configFingerprint('', '2024-01-01');
-  assert.equal(b, '|2024-01-01|monday-week-v1|provider-sources-v1', 'empty clients should produce same as undefined');
+  assert.equal(b, '|2024-01-01|monday-week-v1|provider-sources-v2', 'empty clients should produce same as undefined');
 
   const c = configFingerprint('claude', undefined);
-  assert.equal(c, 'claude|undefined|monday-week-v1|provider-sources-v1', 'undefined allTimeSince produces string "undefined"');
+  assert.equal(c, 'claude|undefined|monday-week-v1|provider-sources-v2', 'undefined allTimeSince produces string "undefined"');
 });
 
 test('weekStartKey resolves to the local Monday, including across a year boundary', () => {
