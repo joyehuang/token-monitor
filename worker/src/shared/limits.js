@@ -213,6 +213,7 @@ function normalizeLimitProvider(input) {
     accountKey: input.accountKey ? String(input.accountKey) : '',
     accountLabel: normalizeAccountLabel(input.accountLabel),
     accountName: normalizeAccountName(input.accountName ?? input.accountLogin ?? input.login),
+    ...(Number.isSafeInteger(input.accountOrder) && input.accountOrder >= 0 ? { accountOrder: input.accountOrder } : {}),
     accountEmail: normalizeAccountEmail(input.accountEmail ?? input.email),
     status: normalizeStatus(input.status),
     source: normalizeSource(input.source),
@@ -328,7 +329,10 @@ function mergeTransientLimitProviders(
 function pickBetterProvider(current, candidate) {
   if (!current) return candidate;
   if (current.sourceDetail === 'readonly' || candidate.sourceDetail === 'readonly') {
-    return timestampMs(candidate.updatedAt) >= timestampMs(current.updatedAt) ? candidate : current;
+    const winner = timestampMs(candidate.updatedAt) >= timestampMs(current.updatedAt) ? candidate : current;
+    const labels = [current, candidate].filter((entry) => entry.sourceDetail === 'readonly' && entry.accountName)
+      .sort((a, b) => timestampMs(b.updatedAt) - timestampMs(a.updatedAt));
+    return labels.length ? { ...winner, accountName: labels[0].accountName, ...(labels[0].accountOrder != null ? { accountOrder: labels[0].accountOrder } : {}) } : winner;
   }
   if (current.stale !== candidate.stale) return current.stale ? candidate : current;
   const rankDiff = statusRank(candidate.status) - statusRank(current.status);

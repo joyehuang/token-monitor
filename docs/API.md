@@ -297,9 +297,11 @@ source directory; symlink auth files are rejected. Windows checks file readabili
 and regular-file identity, not NTFS ACLs. Missing/expired/401/error samples have
 empty windows and accurate status; there is no fallback to another login.
 
-Quota providers use `sourceDetail: "readonly"`, `accountName`, an opaque account
+Quota providers use `sourceDetail: "readonly"`, `accountName`, optional nonnegative
+`accountOrder` (the configured source order within a provider), an opaque account
 key and no email. Same-key samples across devices are selected by latest check,
 never summed. A latest failed check remains failed instead of presenting an older
-success as live. Account rows show separate token and quota sampling times and
-source devices. Calendar token week starts Monday; quota 5h/weekly reset times
-come from the provider. USD estimates are not subscription spending.
+success as live. Home shows compact named quota rows, grouped by provider;
+only windows returned by the provider are displayed (a weekly-only plan has no
+5h placeholder). Calendar token week starts Monday; quota reset times come
+from the provider. USD estimates are not subscription spending.

@@ -80,13 +80,16 @@
           })
           .slice(0, 2)
           .map(({ index: _index, ...window }) => window);
-        if (windows.length === 0) return null;
+        const status = account.status || '';
+        if (windows.length === 0 && (!status || status === 'ok' || status === 'disabled' || status === 'notConfigured')) return null;
         return {
           key: account.key || String(index),
           providerId: account.providerId || '',
           name: account.name || '',
           color: account.color || '',
           lowestRemaining: Math.min(...windows.map((window) => window.remainingPercent)),
+          status,
+          stale: Boolean(account.stale),
           windows,
           index
         };
@@ -200,11 +203,12 @@
 
   function homeLimitAccountsForProviders({
     providers = [],
+    fallbackProviders = [],
     providerOptions = [],
     enabledProviderIds = [],
     hiddenProviderIds = [],
     colors = {},
-    limit = 3,
+    limit = Infinity,
     sort = 'remaining',
     accountName
   } = {}) {
@@ -215,19 +219,35 @@
     for (const { id: rawId, label } of providerOptions || []) {
       const id = String(rawId || '').trim().toLowerCase();
       if (!id || hidden.has(id) || (enabled.size > 0 && !enabled.has(id))) continue;
-      const providerEntries = byId.get(id) || [];
+      let entries = byId.get(id) || [];
+      // A local unconfigured probe can displace an older remote quota in the
+      // hub. Keep that last known row visible, explicitly stale, only for this
+      // setup state. Never mask an actual failed/unauthorized request.
+      if (entries.length && entries.every((entry) => entry.status === 'notConfigured')) {
+        const previous = fallbackProviders.filter((entry) => entry.provider === id && entry.status === 'ok' && entry.windows?.length);
+        if (previous.length) entries = previous.map((entry) => ({ ...entry, stale: true }));
+      }
+      const providerEntries = [...entries].sort((a, b) =>
+        (a.accountOrder ?? Infinity) - (b.accountOrder ?? Infinity));
       providerEntries.forEach((provider, index) => {
         accounts.push({
           key: `${id}:${index}`,
           providerId: id,
-          name: typeof accountName === 'function' ? accountName(provider, index, providerEntries) : label,
+          name: typeof accountName === 'function' ? accountName(provider, index, providerEntries) : provider.accountName || label,
+          status: provider.status,
+          stale: provider.stale,
           color: colors[id] || colors.default || '',
           windows: provider.windows || [],
           balance: provider.balance || null
         });
       });
     }
-    return homeLimitAccounts(accounts, limit, { sort });
+    // Limit provider groups, never individual accounts within a group.
+    const rows = homeLimitAccounts(accounts, Infinity, { sort: 'configured' });
+    const groups = [...new Set(rows.map((row) => row.providerId))].map((id) => rows.filter((row) => row.providerId === id));
+    if (sort !== 'configured') groups.sort((a, b) =>
+      Math.min(...a.map((row) => row.lowestRemaining)) - Math.min(...b.map((row) => row.lowestRemaining)));
+    return groups.slice(0, Math.max(0, Number(limit) || 0)).flat();
   }
 
   function homeTrendSummary(points) {

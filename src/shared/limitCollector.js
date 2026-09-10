@@ -2180,7 +2180,7 @@ async function fetchLiveCodexAccount(deps = {}, nowMs = Date.now()) {
 
 async function fetchReadonlyCodexAccount(source, deps = {}) {
   const updatedAt = nowIso((deps.now || Date.now)());
-  const meta = { provider: 'codex', accountKey: source.accountKey || hashKey('codex-unlinked-source', os.hostname(), source.path, source.id), accountName: source.label, source: 'oauth', sourceDetail: 'readonly', updatedAt };
+  const meta = { provider: 'codex', accountKey: source.accountKey || hashKey('codex-unlinked-source', os.hostname(), source.path, source.id), accountName: source.label, accountOrder: source.accountOrder, source: 'oauth', sourceDetail: 'readonly', updatedAt };
   try {
     const credential = readAccountCredential(source, deps);
     meta.accountKey = credential.accountKey;
@@ -2207,7 +2207,7 @@ async function fetchCodexLimits(options = {}, deps = {}) {
   const readonlySources = normalizeAccountSources(options.codexAccountSources);
   if (readonlySources.length || options.codexReadonlyMode === true) {
     const result = [];
-    for (const source of readonlySources) result.push(await fetchReadonlyCodexAccount(source, deps));
+    for (const [accountOrder, source] of readonlySources.entries()) result.push(await fetchReadonlyCodexAccount({ ...source, accountOrder }, deps));
     for (const account of normalizeCodexManagedAccounts(options.codexManagedAccounts).filter((a) => a.enabled)) {
       if (readonlySources.some((source) => source.path === account.homePath || (source.accountKey && source.accountKey === account.accountKey))) continue;
       const provider = await fetchManagedCodexAccountLimits(account, options, deps);

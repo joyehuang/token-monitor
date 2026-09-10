@@ -25,7 +25,7 @@ test('readonly HTTP is pinned, never invokes RPC, credentials unchanged, no priv
     readCodexRpc: () => assert.fail('RPC must not run'),
     fetch: async (url, options) => { calls++; assert.equal(url, 'https://chatgpt.com/backend-api/wham/usage'); assert.equal(options.method, 'GET'); return { ok: true, json: async () => response }; }
   });
-  assert.equal(calls, 1); assert.equal(providers[0].status, 'ok'); assert.equal(providers[0].windows[0].remainingPercent, 75);
+  assert.equal(calls, 1); assert.equal(providers[0].accountOrder, 0); assert.equal(providers[0].accountName, source.label); assert.equal(providers[0].status, 'ok'); assert.equal(providers[0].windows[0].remainingPercent, 75);
   assert.deepEqual(fs.readFileSync(file), before); assert.equal(providers[0].accountEmail, '');
   const wire = JSON.stringify(providers); assert.ok(!wire.includes(source.path)); assert.ok(!wire.includes('fixture.')); assert.ok(!wire.includes('synthetic-a'));
 });
@@ -96,4 +96,14 @@ test('an unpinned readonly source does not hide a different managed account', as
     fetch: async () => ({ ok: true, json: async () => response })
   });
   assert.equal(rpcCalls, 1); assert.equal(result.length, 2);
+});
+test('readonly weekly-only response stays healthy without manufacturing a session window', async (t) => {
+  const source = fixture(t);
+  const weeklyOnly = { plan_type: 'pro', rate_limit: { primary_window: { used_percent: 35, reset_at: 4102444800, limit_window_seconds: 604800 } } };
+  const providers = await fetchCodexLimits({ codexAccountSources: [source] }, {
+    readCodexRpc: () => assert.fail('RPC must not run'),
+    fetch: async () => ({ ok: true, json: async () => weeklyOnly })
+  });
+  assert.equal(providers[0].status, 'ok');
+  assert.deepEqual(providers[0].windows.map((window) => window.kind), ['weekly']);
 });
