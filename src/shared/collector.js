@@ -104,8 +104,11 @@ function resolvePlatformBinary() {
 function tokscaleCommand() {
   const resolved = resolvePlatformBinary();
   const useDirect = Boolean(resolved && resolved.source !== 'shim');
-  if (useDirect) return { bin: resolved.path, prefixArgs: [], env: process.env };
-  return { bin: process.execPath, prefixArgs: [TOKSCALE_BIN_JS], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } };
+  // The default source and watcher are ~/.codex. An agent's inherited
+  // CODEX_HOME must not silently redirect Personal into an extra profile.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'CODEX_HOME'));
+  if (useDirect) return { bin: resolved.path, prefixArgs: [], env };
+  return { bin: process.execPath, prefixArgs: [TOKSCALE_BIN_JS], env: { ...env, ELECTRON_RUN_AS_NODE: '1' } };
 }
 
 function parseJsonOutput(stdout) {
@@ -138,8 +141,15 @@ function spawnTokscaleJson(userArgs, commandTimeoutMs) {
   });
 }
 
-function runTokscale({ clients, flags, commandTimeoutMs }) {
-  return spawnTokscaleJson(['--json', '--client', clients, '--group-by', 'client,session,model', ...flags], commandTimeoutMs);
+async function runTokscale({ clients, flags, commandTimeoutMs }, scan = spawnTokscaleJson) {
+  const selected = normalizeClientsCsv(clients).split(',').filter(Boolean);
+  if (!selected.includes('pi')) return scan(['--json', '--client', clients, '--group-by', 'client,session,model', ...flags], commandTimeoutMs);
+  // tokscale cannot group by both provider and session. Preserve the session
+  // report as detail metadata; Pi totals/models come only from the provider
+  // report. Extraction excludes its session rows from numeric aggregation.
+  const sessionReport = await scan(['--json', '--client', clients, '--group-by', 'client,session,model', ...flags], commandTimeoutMs);
+  const piProviderReport = await scan(['--json', '--client', 'pi', '--group-by', 'client,provider,model', ...flags], commandTimeoutMs);
+  return { sessionReport, piProviderReport };
 }
 
 function runTokscaleGraph({ clients, commandTimeoutMs }) {
@@ -491,7 +501,8 @@ async function collectUsageOnce(options) {
     if (anchorUsed) {
       // Anchored tick (watch-triggered): every tokscale period scan costs the
       // same full load + filter, so scan only --today and update the broader
-      // windows exactly via applyPeriodDelta — one spawn instead of four.
+      // windows exactly via applyPeriodDelta — one period instead of four
+      // (two spawns per period when Pi provider attribution is enabled).
       const todayJson = await runTokscaleFn({ clients: normalizedClients, flags: ['--today'], commandTimeoutMs });
       today = extractUsageFromTokscale(todayJson);
     } else {
@@ -918,7 +929,7 @@ function configFingerprint(clientsCsv, allTimeSince, codexUsageProfiles, options
   const profilePart = configuredProfiles.length
     ? `|codex-profiles:${profileConfigFingerprint(codexUsageProfiles, { homeDir: options.homeDir })}`
     : '';
-  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}${profilePart}|monday-week-v1`;
+  return `${normalizeClientsCsv(clientsCsv)}|${allTimeSince}${profilePart}|monday-week-v1|provider-sources-v1`;
 }
 
 // Force a full scan at least this often even when the anchor is otherwise
@@ -1304,6 +1315,7 @@ module.exports = {
   shouldIncludeHistory,
   startCollector,
   tokscaleCommand,
+  runTokscale,
   fileSizeSnapshotChanged,
   watchIgnoreMatcher,
   watchPathsForClients

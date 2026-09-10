@@ -237,3 +237,28 @@ Returns normalized records for all stored devices.
 Deletes one device record from the hub store.
 
 This is useful after renaming a device id.
+
+### Pi provider sources and Codex usage roots
+
+Pi model keys for the recorded providers `openai-codex` and
+`openai-codex-agent` include a source suffix, for example
+`gpt-6-astra [openai-codex-agent]`. These labels describe session-recorded
+providers, not authenticated account identities. Costs still come from
+Tokscale's original pricing result. Other clients keep their model keys.
+
+Tokscale cannot group by both session and provider. The collector therefore
+runs a serial Pi provider report alongside the session report. Pi numeric
+contributions come exclusively from the provider report; the original Pi
+sessions remain detail metadata. A session that switched provider may have
+mixed provider metadata; its per-provider token split is not inferred.
+The daily history graph remains a model-level historical view and does not
+claim account/provider separation. All four current period model summaries
+retain source separation through both hub implementations.
+
+Usage subprocesses ignore inherited `CODEX_HOME`, keeping the default Codex
+source aligned with its default directory and watcher. Use the existing local
+`codexUsageProfiles` setting or `TOKEN_MONITOR_CODEX_USAGE_PROFILES` for an
+additional Codex home. Profiles identify configured session sources, not
+verified accounts. Configure each source once; do not copy sessions between
+independently named profiles. These settings do not configure subscription
+5-hour/weekly limits, authentication, login, or token refresh.

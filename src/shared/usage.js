@@ -405,7 +405,14 @@ function repairInvalidWeek(record) {
 
 function detectModel(obj) {
   if (!obj || typeof obj !== 'object') return null;
-  return normalizeModelName(obj.model || obj.modelName || obj.model_name || obj.deployment || obj.engine);
+  const model = normalizeModelName(obj.model || obj.modelName || obj.model_name || obj.deployment || obj.engine);
+  // These are session-recorded provider sources, never verified accounts.
+  // An allowlist prevents arbitrary provider strings becoming public labels.
+  const provider = normalizeProviderName(obj.provider);
+  if (model && detectClient(obj) === 'pi' && ['openai-codex', 'openai-codex-agent'].includes(provider)) {
+    return `${model} [${provider}]`;
+  }
+  return model;
 }
 
 function detectSessionId(obj) {
@@ -735,7 +742,18 @@ function normalizePeriod(input) {
 
 function extractUsageFromTokscale(json) {
   const rows = [];
-  collectUsageRows(json, rows);
+  const piSessionRows = [];
+  if (json?.sessionReport && json?.piProviderReport) {
+    const sessionRows = [];
+    collectUsageRows(json.sessionReport, sessionRows);
+    for (const row of sessionRows) {
+      if (detectClient(row) === 'pi') piSessionRows.push(row);
+      else rows.push(row);
+    }
+    collectUsageRows(json.piProviderReport, rows);
+  } else {
+    collectUsageRows(json, rows);
+  }
   if (rows.length === 0 && json && typeof json === 'object') {
     return {
       totalTokens: Math.max(0, Math.round(tokenValue(json))),
@@ -786,6 +804,12 @@ function extractUsageFromTokscale(json) {
       if (!period.clientModelCosts[client]) period.clientModelCosts[client] = {};
       period.clientModelCosts[client][model] = (period.clientModelCosts[client][model] || 0) + cost;
     }
+    const session = sessionFromRow(row);
+    if (session) addSession(period, session);
+  }
+  // Session detail is a sidecar, never a second contribution to totals. A
+  // mixed-provider session remains mixed: do not invent a token split here.
+  for (const row of piSessionRows) {
     const session = sessionFromRow(row);
     if (session) addSession(period, session);
   }
